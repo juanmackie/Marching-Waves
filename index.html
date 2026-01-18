@@ -629,6 +629,7 @@
                             <option value="streamlines">Flow Streamlines</option>
                             <option value="stipple">Weighted Stipple</option>
                             <option value="tsp">TSP Art (Continuous Line)</option>
+                            <option value="hatch">Cross Hatch</option>
                         </select>
                     </div>
                     <div class="select-group">
@@ -648,6 +649,11 @@
                             <option value="marble-flow">Marble Flow</option>
                             <option value="ink-stipple">Ink Stipple</option>
                             <option value="tangled-string">Tangled String (TSP)</option>
+                            <option value="fluid">Fluid</option>
+                            <option value="cyberpunk">Cyberpunk</option>
+                            <option value="ink-blot">Ink Blot</option>
+                            <option value="ethereal">Ethereal</option>
+                            <option value="sketch">Sketch (Hatch)</option>
                         </select>
                     </div>
                     <div class="control-group">
@@ -1881,6 +1887,8 @@
                     contourData = await this.extractStipple(width, height, options);
                 } else if (options.mode === 'tsp') {
                     contourData = await this.extractTSP(width, height, options);
+                } else if (options.mode === 'hatch') {
+                    contourData = await this.extractHatch(width, height, options);
                 } else {
                     // Extract new adaptive contour parameters from options
                     const contourOptions = {
@@ -2315,12 +2323,15 @@
                 const tEnd = performance.now();
                 console.log(`Streamline tracing took ${(tEnd - tStart).toFixed(1)}ms for ${paths.length} paths`);
 
-                // Post-process: Smoothing
-                const smoothedPaths = paths.map(p => this.smoothPath(p, options.contourSmoothness || 0.5));
-                
-                // Post-process: Optimization
+                // Post-process: Centralized Smoothing & Optimization
                 this.updateProgress(showProgress, 95, 'Optimizing paths...');
-                const optimized = this.optimizePathOrder(smoothedPaths);
+                const optimized = this.postProcessPaths(paths, {
+                    ...options,
+                    // Ensure we use splines if smoothness is requested
+                    contourSmoothness: options.contourSmoothness || 0.5,
+                    // Streamlines are already continuous, but might be noisy from grid
+                    simplification: 0.8 
+                });
 
                 return { 
                     contours: optimized, 
@@ -2535,7 +2546,164 @@
                     } else break;
                 }
 
-                return { contours: [orderedPoints], raw: [], skippedJoining: false };
+                // Smooth the TSP path
+                const smoothed = this.postProcessPaths([orderedPoints], {
+                    ...options,
+                    contourSmoothness: 0.5, // Force some smoothing for TSP
+                    optimizePath: false // Already optimized
+                });
+
+                return { contours: smoothed, raw: [], skippedJoining: false };
+            }
+
+            async extractHatch(width, height, options) {
+                const {
+                    interval = 10,
+                    showProgress = true,
+                    threshold = 0.5
+                } = options;
+
+                const lines = [];
+                const spacing = interval;
+                // Use grayscale data to determine density
+                // We'll create layers of hatching
+                // Layer 1: -45 deg (TL to BR), covers light gray to black
+                // Layer 2: 45 deg (TR to BL), covers medium gray to black
+                // Layer 3: Vertical, covers dark gray to black
+                // Layer 4: Horizontal, covers blackest
+
+                const layers = [
+                    { angle: -Math.PI / 4, t: threshold + 0.2 },
+                    { angle: Math.PI / 4, t: threshold },
+                    { angle: 0, t: threshold - 0.2 },
+                    { angle: Math.PI / 2, t: threshold - 0.3 }
+                ];
+
+                const maxLength = Math.sqrt(width * width + height * height);
+
+                for (let l = 0; l < layers.length; l++) {
+                    const layer = layers[l];
+                    const angle = layer.angle;
+                    const layerThreshold = Math.max(0.1, layer.t); // Ensure valid threshold
+
+                    const cos = Math.cos(angle);
+                    const sin = Math.sin(angle);
+                    
+                    // Rotate coordinate system to scanlines
+                    // We scan along a rotated grid
+                    
+                    // Bounding box of rotated image
+                    // Simple approach: cast rays across the image
+                    
+                    // For fixed spacing, we can iterate along a perpendicular axis
+                    // Center is width/2, height/2
+                    
+                    const cx = width / 2;
+                    const cy = height / 2;
+
+                    // Iterate 'd' (distance from center along normal)
+                    for (let d = -maxLength; d < maxLength; d += spacing) {
+                        // Line equation: x*cos(a) + y*sin(a) = d
+                        // We walk along the line
+                        
+                        let segments = [];
+                        let currentSegment = null;
+
+                        // Walk along the line
+                        // Perpendicular vector (-sin, cos)
+                        // p = center + d*normal + t*tangent
+                        
+                        const nx = Math.cos(angle - Math.PI/2);
+                        const ny = Math.sin(angle - Math.PI/2);
+                        
+                        // Start point on the line (closest to center)
+                        const px = cx + d * Math.cos(angle + Math.PI/2);
+                        const py = cy + d * Math.sin(angle + Math.PI/2);
+
+                        for (let t = -maxLength; t < maxLength; t += 2) {
+                            const x = Math.floor(px + t * Math.cos(angle));
+                            const y = Math.floor(py + t * Math.sin(angle));
+
+                            if (x >= 0 && x < width && y >= 0 && y < height) {
+                                const idx = y * width + x;
+                                const val = this.grayData[idx];
+
+                                if (val < layerThreshold) {
+                                    if (!currentSegment) {
+                                        currentSegment = [{x, y}];
+                                    } else {
+                                        currentSegment.push({x, y});
+                                    }
+                                } else {
+                                    if (currentSegment) {
+                                        if (currentSegment.length > 5) segments.push(currentSegment);
+                                        currentSegment = null;
+                                    }
+                                }
+                            } else {
+                                if (currentSegment) {
+                                    if (currentSegment.length > 5) segments.push(currentSegment);
+                                    currentSegment = null;
+                                }
+                            }
+                        }
+                        if (currentSegment && currentSegment.length > 5) segments.push(currentSegment);
+                        
+                        // Simplify segments to just start/end to keep it clean hatching
+                        segments.forEach(seg => {
+                            lines.push([seg[0], seg[seg.length-1]]);
+                        });
+                    }
+
+                     if (showProgress) {
+                         this.updateProgress(showProgress, 60 + (l / layers.length) * 30, `Hatching (Layer ${l+1})...`);
+                         await this.checkPause();
+                         if (this.isCancelled) throw new Error('Cancelled by user');
+                     }
+                }
+
+                // Optimize lines
+                const optimized = this.postProcessPaths(lines, { ...options, contourSmoothness: 0, simplification: 0.5 });
+                
+                return { contours: optimized, raw: [], skippedJoining: false };
+            }
+
+            postProcessPaths(paths, options) {
+                const {
+                    contourSmoothness = 0.5,
+                    simplification = 1.0,
+                    optimizePath = true,
+                    minPathLength = 5,
+                    splineResolution = 4
+                } = options;
+
+                let processed = paths;
+
+                // 1. Noise Filter (Length)
+                processed = processed.filter(p => this.getPathLength(p) > minPathLength);
+                processed = processed.map(p => this.validatePath(p)).filter(p => p.length > 0);
+
+                // 2. Simplify (RDP)
+                // Always apply some simplification to remove pixel-stepping artifacts
+                const epsilon = Math.max(0.5, simplification);
+                processed = processed.map(p => this.simplifyPath(p, epsilon));
+                processed = processed.map(p => this.validatePath(p)).filter(p => p.length > 0);
+
+                // 3. Smoothing (Catmull-Rom Spline)
+                if (contourSmoothness > 0.1) {
+                    // Adjust tension based on smoothness (0.1 to 1.0 -> tension 0.1 to 1.0)
+                    // Higher tension = tighter curves, less overshooting
+                    // We want 'smooth' so standard 0.5 is good.
+                    processed = processed.map(p => this.getSplinePoints(p, splineResolution, 0.5));
+                    processed = processed.map(p => this.validatePath(p)).filter(p => p.length > 0);
+                }
+
+                // 4. Path Optimization (TSP-Lite)
+                if (optimizePath) {
+                    processed = this.optimizePathOrder(processed);
+                }
+
+                return processed;
             }
 
             removeContoursInRect(rect) {
@@ -3679,33 +3847,14 @@
                     }
                 }
                 
-                 // === NEW POST-PROCESSING PIPELINE ===
-
-                 // 1. Noise Filter (Length)
-                 paths = paths.filter(p => this.getPathLength(p) > minPathLength);
-                 paths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
-
-                 // 2. Simplify (RDP)
-                 // Use epsilon based on detail settings, default 1.0 is good for plotters
-                 paths = paths.map(p => this.simplifyPath(p, simplification));
-                 paths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
-
-                 // 3. Smoothing (Catmull-Rom Spline)
-                 // Replaces the old simple averaging
-                 if (contourSmoothness > 0.1) {
-                     paths = paths.map(p => this.getSplinePoints(p, splineResolution, 0.5));
-                     paths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
-                 }
-
-                 // 4. Path Optimization (TSP-Lite)
-                 if (optimizePath) {
-                     this.updateProgress(showProgress, 95, 'Optimizing plotter paths...');
-                     // Small delay to let UI update
-                     await new Promise(r => setTimeout(r, 10));
-                     paths = this.optimizePathOrder(paths);
-                 }
-
-                 return paths;
+                 // === NEW POST-PROCESSING PIPELINE (Centralized) ===
+                 return this.postProcessPaths(paths, {
+                     contourSmoothness,
+                     simplification,
+                     optimizePath,
+                     minPathLength,
+                     splineResolution
+                 });
             }
         }
 
@@ -3878,6 +4027,55 @@
         });
 
         const presets = {
+            'fluid': {
+                mode: 'streamlines',
+                interval: 5,
+                lineWidth: 0.8,
+                threshold: 50,
+                lineColor: '#1a1a2e',
+                invert: true,
+                contourSmoothness: 1.0,
+                simplification: 0.8
+            },
+            'cyberpunk': {
+                mode: 'contours',
+                interval: 15,
+                lineWidth: 1.2,
+                threshold: 60,
+                lineColor: '#00ff99',
+                invert: true,
+                edgeGuidance: true,
+                edgeSensitivity: 0.9,
+                simplification: 0.2,
+                contourSmoothness: 0.2
+            },
+            'ink-blot': {
+                mode: 'stipple',
+                interval: 4,
+                lineWidth: 1.0,
+                threshold: 30,
+                lineColor: '#000000',
+                invert: true
+            },
+            'ethereal': {
+                mode: 'contours',
+                interval: 4,
+                lineWidth: 0.5,
+                threshold: 20,
+                lineColor: '#88ccff',
+                invert: false,
+                contourSmoothness: 0.9,
+                detailLevel: 1.0
+            },
+            'sketch': {
+                mode: 'hatch',
+                interval: 8,
+                lineWidth: 0.5,
+                threshold: 50,
+                lineColor: '#000000',
+                invert: true,
+                simplification: 0.5
+            },
             'topo-map': {
                 mode: 'contours',
                 interval: 12,
@@ -3991,14 +4189,15 @@
             const labels = document.querySelectorAll('.panel:nth-child(2) .control-group label');
             if (labels[0]) {
                 labels[0].textContent = mode === 'streamlines' ? 'Streamline Spacing' : 
-                                        mode === 'stipple' || mode === 'tsp' ? 'Point Density' : 'Contour Interval';
+                                        mode === 'stipple' || mode === 'tsp' ? 'Point Density' : 
+                                        mode === 'hatch' ? 'Hatch Spacing' : 'Contour Interval';
             }
             
             // Show/Hide adaptive panels
             const adaptivePanel = document.querySelectorAll('.panel')[2];
             const performancePanel = document.querySelectorAll('.panel')[4];
             
-            if (mode === 'streamlines' || mode === 'stipple' || mode === 'tsp') {
+            if (mode === 'streamlines' || mode === 'stipple' || mode === 'tsp' || mode === 'hatch') {
                 adaptivePanel.style.display = 'none';
                 // For performance, stipple/tsp don't use maxSegments the same way
                 document.getElementById('maxSegments').closest('.control-group').style.display = 'none';
