@@ -1,5 +1,7 @@
 # Marching Waves
 
+DEMO LINK: https://juanmackie.github.io/Marching-Waves/
+
 **Generate contour-based artwork using the Eikonal Equation**
 
 Marching Waves is an advanced computational art generator that creates beautiful, mathematically-derived contour artwork from images. It uses sophisticated algorithms including the Eikonal equation, Fast Marching Method, and Marching Squares to generate artistic representations of images as contour lines, streamlines, stipple patterns, and more.
