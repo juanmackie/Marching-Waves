@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worker Test - Marching Waves</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 {
+            color: #00d9ff;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #00d9ff;
+            background: rgba(0, 217, 255, 0.1);
+        }
+        .success {
+            border-left-color: #00ff88;
+            background: rgba(0, 255, 136, 0.1);
+        }
+        .error {
+            border-left-color: #ff4444;
+            background: rgba(255, 68, 68, 0.1);
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px 0;
+            background: #00d9ff;
+            border: none;
+            border-radius: 5px;
+            color: #1a1a2e;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #00b8d9;
+        }
+        #output {
+            margin-top: 20px;
+            padding: 15px;
+            background: #16213e;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>Worker Test</h1>
+    <div id="status" class="status">
+        Testing worker functionality...
+    </div>
+    <button onclick="testWorker()">Test Worker</button>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+
+        function log(message) {
+            const time = new Date().toLocaleTimeString();
+            output.textContent += `[${time}] ${message}\n`;
+            console.log(message);
+        }
+
+        async function testWorker() {
+            status.textContent = 'Running worker test...';
+            status.className = 'status';
+            output.textContent = '';
+            
+            try {
+                log('Step 1: Checking Worker support...');
+                if (typeof Worker === 'undefined') {
+                    throw new Error('Web Workers not supported in this browser');
+                }
+                log('✓ Web Workers are supported');
+
+                log('Step 2: Creating worker from worker.js...');
+                const worker = new Worker('worker.js');
+                log('✓ Worker created successfully');
+
+                log('Step 3: Setting up message handlers...');
+                const taskId = `test_${Date.now()}`;
+                let resultReceived = false;
+                let progressReceived = false;
+
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Test timeout after 30 seconds')), 30000);
+                });
+
+                const resultPromise = new Promise((resolve) => {
+                    worker.onmessage = (e) => {
+                        const { type, taskId: receivedTaskId, percent, message, data, performance } = e.data;
+                        
+                        if (type === 'progress') {
+                            if (!progressReceived) {
+                                log(`✓ Progress received: ${percent}% - ${message}`);
+                                progressReceived = true;
+                            }
+                        } else if (type === 'result') {
+                            log(`✓ Result received`);
+                            log(`  - Task ID: ${receivedTaskId}`);
+                            log(`  - Data keys: ${Object.keys(data || {}).join(', ')}`);
+                            log(`  - Performance: ${JSON.stringify(performance)}`);
+                            resultReceived = true;
+                            resolve({ success: true, data, performance });
+                        } else if (type === 'error') {
+                            log(`✗ Error received: ${e.data.error.message}`);
+                            resolve({ success: false, error: e.data.error.message });
+                        }
+                    };
+                });
+
+                log('Step 4: Sending test task (solveEikonalCPU)...');
+                worker.postMessage({
+                    type: 'execute',
+                    taskId,
+                    method: 'solveEikonalCPU',
+                    params: {
+                        grayData: new Float32Array([0.1, 0.5, 0.9, 0.5, 0.1, 0.5, 0.9, 0.5, 0.1]),
+                        width: 3,
+                        height: 3,
+                        threshold: 0.5
+                    },
+                    options: { showProgress: true }
+                });
+
+                log('Step 5: Waiting for response...');
+                const result = await Promise.race([resultPromise, timeoutPromise]);
+
+                if (result.success) {
+                    status.textContent = '✓ Worker test PASSED!';
+                    status.className = 'status success';
+                    log('\n=== TEST PASSED ===\n');
+                    log('Worker is working correctly!');
+                    log('Background processing is functional.');
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+
+                worker.terminate();
+                log('Worker terminated successfully');
+
+            } catch (error) {
+                status.textContent = '✗ Worker test FAILED!';
+                status.className = 'status error';
+                log(`\n=== TEST FAILED ===\n`);
+                log(`Error: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        // Auto-run test on page load
+        window.addEventListener('load', () => {
+            log('Page loaded. Click "Test Worker" to begin.');
+            log(`Hardware concurrency: ${navigator.hardwareConcurrency || 'unknown'}`);
+            log(`User agent: ${navigator.userAgent.substring(0, 100)}...`);
+        });
+    </script>
+</body>
+</html>
