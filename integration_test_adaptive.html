@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Adaptive Contours Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { display: flex; flex-wrap: wrap; gap: 20px; }
+        .canvas-container { border: 1px solid #ccc; padding: 10px; }
+        canvas { border: 1px solid #666; }
+        .controls { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        button { padding: 8px 16px; margin: 5px; }
+        .log { margin-top: 20px; padding: 10px; background: #000; color: #0ff; font-family: monospace; height: 300px; overflow-y: auto; }
+        .stats { margin: 10px 0; padding: 10px; background: #eee; }
+    </style>
+</head>
+<body>
+    <h1>Adaptive Contours Integration Test</h1>
+    <div class="controls">
+        <button id="runTest">Run Adaptive Contours Test</button>
+        <button id="clearLog">Clear Log</button>
+        <div>
+            <label>Test Image: </label>
+            <select id="testImage">
+                <option value="gradient">Gradient Circle</option>
+                <option value="stripes">Stripes Pattern</option>
+                <option value="noise">Noise Pattern</option>
+                <option value="complex">Complex Pattern</option>
+            </select>
+        </div>
+        <div>
+            Interval: <input type="range" id="interval" min="0.1" max="5" step="0.1" value="1"> 
+            <span id="intervalValue">1.0</span>
+        </div>
+        <div>
+            Detail Level: <input type="range" id="detailLevel" min="0.1" max="1" step="0.1" value="0.8"> 
+            <span id="detailLevelValue">0.8</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="canvas-container">
+            <h3>Input Image</h3>
+            <canvas id="inputCanvas" width="400" height="300"></canvas>
+        </div>
+        
+        <div class="canvas-container">
+            <h3>Adaptive Contours Result</h3>
+            <canvas id="outputCanvas" width="400" height="300"></canvas>
+        </div>
+    </div>
+    
+    <div class="stats" id="stats"></div>
+    <div class="log" id="log"></div>
+
+    <script>
+        // This is a simplified test that simulates the key parts of the adaptive contours algorithm
+        // to verify that the fix prevents contours from being removed incorrectly
+        
+        const inputCanvas = document.getElementById('inputCanvas');
+        const outputCanvas = document.getElementById('outputCanvas');
+        const inputCtx = inputCanvas.getContext('2d');
+        const outputCtx = outputCanvas.getContext('2d');
+        const logElement = document.getElementById('log');
+        const statsElement = document.getElementById('stats');
+        
+        function logMessage(msg) {
+            const time = new Date().toLocaleTimeString();
+            logElement.innerHTML += `[${time}] ${msg}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function updateStats(stats) {
+            statsElement.innerHTML = '<h3>Statistics</h3>' + 
+                Object.entries(stats).map(([key, value]) => 
+                    `<div><strong>${key}:</strong> ${value}</div>`
+                ).join('');
+        }
+        
+        // Test image generators
+        function generateTestImage(type, width, height) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            switch (type) {
+                case 'gradient':
+                    // Circular gradient
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+                    
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                            const intensity = Math.min(1, dist / maxDist) * 255;
+                            ctx.fillStyle = `rgb(${intensity}, ${intensity}, ${intensity})`;
+                            ctx.fillRect(x, y, 1, 1);
+                        }
+                    }
+                    break;
+                    
+                case 'stripes':
+                    // Vertical stripes
+                    const stripeWidth = 20;
+                    for (let x = 0; x < width; x++) {
+                        const stripe = Math.floor(x / stripeWidth);
+                        const intensity = (stripe % 2 === 0) ? 50 : 200;
+                        for (let y = 0; y < height; y++) {
+                            ctx.fillStyle = `rgb(${intensity}, ${intensity}, ${intensity})`;
+                            ctx.fillRect(x, y, 1, 1);
+                        }
+                    }
+                    break;
+                    
+                case 'noise':
+                    // Random noise
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            const intensity = Math.random() * 255;
+                            ctx.fillStyle = `rgb(${intensity}, ${intensity}, ${intensity})`;
+                            ctx.fillRect(x, y, 1, 1);
+                        }
+                    }
+                    break;
+                    
+                case 'complex':
+                    // Complex pattern with multiple features
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            // Combine multiple patterns
+                            const circle1 = Math.sqrt(Math.pow(x - width/3, 2) + Math.pow(y - height/2, 2));
+                            const circle2 = Math.sqrt(Math.pow(x - width*2/3, 2) + Math.pow(y - height/3, 2));
+                            const stripes = Math.sin(x * 0.1) * 50 + 128;
+                            
+                            const intensity = (
+                                Math.min(1, circle1 / 50) * 100 + 
+                                Math.min(1, circle2 / 30) * 150 + 
+                                stripes
+                            ) / 3;
+                            
+                            ctx.fillStyle = `rgb(${intensity}, ${intensity}, ${intensity})`;
+                            ctx.fillRect(x, y, 1, 1);
+                        }
+                    }
+                    break;
+            }
+            
+            return canvas;
+        }
+        
+        // Simulate distance field from image
+        function createDistanceFieldFromImage(imageData, width, height) {
+            const solution = new Float32Array(width * height);
+            
+            // Simple distance transform simulation
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const idx = (y * width + x) * 4;
+                    const r = imageData.data[idx];
+                    const g = imageData.data[idx + 1];
+                    const b = imageData.data[idx + 2];
+                    const intensity = (r + g + b) / 3;
+                    
+                    // Convert intensity to distance (inverted)
+                    solution[y * width + x] = 255 - intensity;
+                }
+            }
+            
+            return solution;
+        }
+        
+        // Simulate gradient magnitude
+        function computeGradientMagnitude(solution, width, height) {
+            const gradMag = new Float32Array(width * height);
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = y * width + x;
+                    const dx = solution[idx + 1] - solution[idx - 1];
+                    const dy = solution[idx + width] - solution[idx - width];
+                    gradMag[idx] = Math.sqrt(dx * dx + dy * dy);
+                }
+            }
+            
+            return gradMag;
+        }
+        
+        // The fixed adaptive level generation algorithm
+        function generateAdaptiveLevels(solution, width, height, interval, minVal, maxVal, gradMag, detailLevel) {
+            const levels = [];
+            const range = maxVal - minVal;
+
+            // Calculate how many levels we'd get with fixed intervals
+            const fixedLevelCount = Math.floor(range / interval);
+
+            logMessage(`Range: ${range.toFixed(2)}, Fixed level count: ${fixedLevelCount}`);
+
+            // If range is small or gradient is weak, use original approach
+            if (range < interval * 3 || fixedLevelCount < 3) {
+                logMessage('Using original level generation (range too small)');
+                for (let l = minVal + interval; l < maxVal; l += interval) {
+                    levels.push(l);
+                }
+                return levels;
+            }
+
+            // Otherwise use adaptive approach (for better detail preservation)
+            const maxIterations = Math.min(5000, fixedLevelCount * 2);
+            const minAdaptiveInterval = Math.max(interval * 0.3, 0.15); // Increased minimum interval
+            const maxAdaptiveInterval = interval * 2.0; // Added maximum interval limit
+            let currentLevel = minVal + interval;
+            let iterations = 0;
+
+            // Memory-efficient gradient normalization
+            let maxGrad = 0;
+            let gradSumTotal = 0;
+            let validGradCount = 0;
+            for (let i = 0; i < gradMag.length; i++) {
+                if (gradMag[i] > maxGrad) maxGrad = gradMag[i];
+                if (gradMag[i] > 0) {
+                    gradSumTotal += gradMag[i];
+                    validGradCount++;
+                }
+            }
+            const gradNormalization = 1 / (maxGrad || 1);
+            const avgGradient = validGradCount > 0 ? gradSumTotal / validGradCount : 0.5;
+
+            logMessage(`Gradient stats: max=${maxGrad.toFixed(3)}, avg=${avgGradient.toFixed(3)}`);
+
+            while (currentLevel < maxVal && iterations < maxIterations) {
+                iterations++;
+                levels.push(currentLevel);
+
+                // Compute average gradient in the region around this level
+                let gradSum = 0;
+                let count = 0;
+
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        const idx = y * width + x;
+                        if (solution[idx] >= Infinity) continue;
+
+                        const levelDist = Math.abs(solution[idx] - currentLevel);
+                        if (levelDist < interval * 2) {
+                            gradSum += gradMag[idx] * gradNormalization;
+                            count++;
+                        }
+                    }
+                }
+
+                const avgGrad = count > 0 ? gradSum / count : avgGradient;
+                
+                // Improved adaptation formula - more conservative and bounded
+                const adaptFactorBase = 0.8 + 0.2 * Math.exp(-avgGrad * 1.5); // Less aggressive adaptation
+                const adaptFactor = Math.max(0.5, Math.min(1.5, adaptFactorBase)); // Bound the factor
+                const nextInterval = Math.max(minAdaptiveInterval, Math.min(maxAdaptiveInterval, interval * adaptFactor));
+
+                logMessage(`Level ${iterations}: ${currentLevel.toFixed(2)} -> interval: ${nextInterval.toFixed(3)}, grad: ${avgGrad.toFixed(3)}, factor: ${adaptFactor.toFixed(3)}`);
+
+                currentLevel += nextInterval;
+            }
+
+            // Improved fallback logic
+            const minimumLevels = Math.min(5, Math.max(3, Math.floor(fixedLevelCount * 0.3)));
+            if (levels.length < minimumLevels) {
+                logMessage(`Adaptive level generation produced too few levels (${levels.length} < ${minimumLevels}), falling back to original`);
+                levels.length = 0;
+                for (let l = minVal + interval; l < maxVal; l += interval) {
+                    levels.push(l);
+                }
+            }
+
+            logMessage(`Generated ${levels.length} levels, avg interval: ${levels.length > 1 ? (range / levels.length).toFixed(3) : 'N/A'}`);
+            return levels;
+        }
+        
+        // Simplified contour extraction
+        function extractContoursFromLevels(solution, width, height, levels) {
+            const contours = [];
+            let totalLines = 0;
+            
+            const safeGet = (x, y) => {
+                if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+                return solution[y * width + x];
+            };
+
+            const interp = (v1, v2, level) => {
+                if (v1 === Infinity || v2 === Infinity) return 0.5;
+                const diff = v2 - v1;
+                if (Math.abs(diff) < 0.00001) return 0.5;
+                return Math.max(0, Math.min(1, (level - v1) / diff));
+            };
+
+            for (const level of levels) {
+                const levelLines = [];
+                
+                for (let y = 0; y < height - 1; y++) {
+                    for (let x = 0; x < width - 1; x++) {
+                        const v00 = safeGet(x, y);
+                        const v10 = safeGet(x + 1, y);
+                        const v01 = safeGet(x, y + 1);
+                        const v11 = safeGet(x + 1, y + 1);
+
+                        let code = 0;
+                        if (v00 >= level) code |= 1;
+                        if (v10 >= level) code |= 2;
+                        if (v01 >= level) code |= 4;
+                        if (v11 >= level) code |= 8;
+
+                        const lines = [];
+                        const addLine = (x1, y1, x2, y2) => {
+                            lines.push({ x1: x + x1, y1: y + y1, x2: x + x2, y2: y + y2 });
+                        };
+
+                        switch (code) {
+                            case 1:
+                            case 14:
+                                addLine(0, interp(v00, v10, level), 0.5, 0); break;
+                            case 2:
+                            case 13:
+                                addLine(0.5, 0, 1, interp(v10, v11, level)); break;
+                            case 3:
+                            case 12:
+                                addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level)); break;
+                            case 4:
+                            case 11:
+                                addLine(0.5, 1, interp(v01, v11, level), 1); break;
+                            case 5:
+                                addLine(0, interp(v00, v10, level), 0.5, 1);
+                                addLine(0.5, 0, interp(v01, v11, level), 1); break;
+                            case 6:
+                            case 9:
+                                addLine(0.5, 0, 0.5, 1); break;
+                            case 7:
+                            case 8:
+                                addLine(0, interp(v00, v10, level), 0.5, 1);
+                                addLine(0.5, 0, 1, interp(v10, v11, level)); break;
+                            case 10:
+                                addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
+                                addLine(0.5, 0, 0.5, 1); break;
+                        }
+
+                        levelLines.push(...lines);
+                    }
+                }
+                
+                totalLines += levelLines.length;
+                if (levelLines.length > 0) {
+                    contours.push({ level, lines: levelLines });
+                }
+            }
+            
+            return { contours, totalLines };
+        }
+        
+        // Main test function
+        async function runAdaptiveContoursTest() {
+            logElement.innerHTML = '';
+            
+            const testType = document.getElementById('testImage').value;
+            const interval = parseFloat(document.getElementById('interval').value);
+            const detailLevel = parseFloat(document.getElementById('detailLevel').value);
+            
+            logMessage(`Starting test: ${testType}, interval: ${interval}, detail: ${detailLevel}`);
+            
+            // Generate test image
+            const testImage = generateTestImage(testType, inputCanvas.width, inputCanvas.height);
+            inputCtx.drawImage(testImage, 0, 0);
+            
+            // Get image data and create distance field
+            const imageData = inputCtx.getImageData(0, 0, inputCanvas.width, inputCanvas.height);
+            const solution = createDistanceFieldFromImage(imageData, inputCanvas.width, inputCanvas.height);
+            const gradMag = computeGradientMagnitude(solution, inputCanvas.width, inputCanvas.height);
+            
+            // Find min/max values
+            let minVal = Infinity;
+            let maxVal = -Infinity;
+            for (let i = 0; i < solution.length; i++) {
+                if (solution[i] < minVal) minVal = solution[i];
+                if (solution[i] > maxVal) maxVal = solution[i];
+            }
+            
+            logMessage(`Distance field range: ${minVal.toFixed(2)} - ${maxVal.toFixed(2)}`);
+            
+            // Generate adaptive levels
+            const startTime = performance.now();
+            const levels = generateAdaptiveLevels(solution, inputCanvas.width, inputCanvas.height, interval, minVal, maxVal, gradMag, detailLevel);
+            const levelGenTime = performance.now() - startTime;
+            
+            logMessage(`Generated ${levels.length} adaptive levels in ${levelGenTime.toFixed(1)}ms`);
+            
+            // Extract contours
+            const contourStartTime = performance.now();
+            const { contours, totalLines } = extractContoursFromLevels(solution, inputCanvas.width, inputCanvas.height, levels);
+            const contourTime = performance.now() - contourStartTime;
+            
+            logMessage(`Extracted ${contours.length} contour levels with ${totalLines} total lines in ${contourTime.toFixed(1)}ms`);
+            
+            // Render contours
+            outputCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+            outputCtx.fillStyle = '#000';
+            outputCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+            
+            outputCtx.strokeStyle = '#0ff';
+            outputCtx.lineWidth = 1;
+            
+            let renderedLines = 0;
+            for (const contour of contours) {
+                for (const line of contour.lines) {
+                    outputCtx.beginPath();
+                    outputCtx.moveTo(line.x1, line.y1);
+                    outputCtx.lineTo(line.x2, line.y2);
+                    outputCtx.stroke();
+                    renderedLines++;
+                }
+            }
+            
+            // Update statistics
+            updateStats({
+                'Test Type': testType,
+                'Interval': interval.toFixed(2),
+                'Detail Level': detailLevel.toFixed(2),
+                'Distance Range': `${minVal.toFixed(2)} - ${maxVal.toFixed(2)}`,
+                'Adaptive Levels': levels.length,
+                'Contour Levels': contours.length,
+                'Total Lines': totalLines,
+                'Rendered Lines': renderedLines,
+                'Level Generation Time': `${levelGenTime.toFixed(1)}ms`,
+                'Contour Extraction Time': `${contourTime.toFixed(1)}ms`,
+                'Total Time': `${(levelGenTime + contourTime).toFixed(1)}ms`
+            });
+            
+            // Check for potential issues
+            if (contours.length === 0) {
+                logMessage('⚠️  WARNING: No contours were generated! This indicates a problem.');
+            } else if (contours.length < 3) {
+                logMessage('⚠️  WARNING: Very few contours generated. Check adaptive parameters.');
+            } else {
+                logMessage('✅ SUCCESS: Adaptive contours generated successfully!');
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('runTest').addEventListener('click', runAdaptiveContoursTest);
+        document.getElementById('clearLog').addEventListener('click', () => {
+            logElement.innerHTML = '';
+        });
+        
+        document.getElementById('interval').addEventListener('input', function() {
+            document.getElementById('intervalValue').textContent = this.value;
+        });
+        
+        document.getElementById('detailLevel').addEventListener('input', function() {
+            document.getElementById('detailLevelValue').textContent = this.value;
+        });
+        
+        // Initialize
+        logMessage('Adaptive Contours Integration Test Ready');
+        updateStats({'Status': 'Ready to test'});
+    </script>
+</body>
+</html>

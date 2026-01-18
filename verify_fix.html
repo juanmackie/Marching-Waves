@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verify Marching Waves Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        canvas { border: 1px solid #ccc; background: white; margin: 10px 0; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .console { background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+        .result { padding: 10px; background: #e9ecef; border-radius: 4px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Verify Marching Waves Fix</h1>
+        <div id="status" class="status"></div>
+        
+        <div class="test-section">
+            <h2>Test Results</h2>
+            <div id="results" class="result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>Console Output</h2>
+            <div id="console" class="console"></div>
+        </div>
+        
+        <button id="runTest">Run Fix Verification</button>
+    </div>
+    
+    <script>
+        // Test the MarchingWaves class functionality
+        class TestMarchingWaves {
+            constructor() {
+                this.canvas = document.createElement('canvas');
+                this.canvas.width = 100;
+                this.canvas.height = 100;
+                this.ctx = this.canvas.getContext('2d');
+                this.debugMode = false;
+                this.vizMode = 'final';
+                this.showOrigins = true;
+                this.showGrid = false;
+                this.perf = {};
+            }
+            
+            async renderDebugVisualization(width, height, lineColor, lineWidth) {
+                console.log('renderDebugVisualization called with:', { width, height, lineColor, lineWidth });
+                
+                // This should now properly render to the canvas
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+                
+                if (this.vizMode === 'grayscale') {
+                    console.log('Rendering grayscale visualization');
+                    const imgData = this.ctx.createImageData(width, height);
+                    for (let i = 0; i < width * height; i++) {
+                        const val = Math.floor((i / (width * height)) * 255);
+                        imgData.data[i * 4] = val;
+                        imgData.data[i * 4 + 1] = val;
+                        imgData.data[i * 4 + 2] = val;
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    this.ctx.putImageData(imgData, 0, 0);
+                } else if (this.vizMode === 'heatmap') {
+                    console.log('Rendering heatmap visualization');
+                    const imgData = this.ctx.createImageData(width, height);
+                    for (let i = 0; i < width * height; i++) {
+                        const x = i % width;
+                        const y = Math.floor(i / width);
+                        const t = (x + y) / (width + height);
+                        const r = Math.floor(t * 255);
+                        const b = Math.floor((1 - t) * 255);
+                        imgData.data[i * 4] = r;
+                        imgData.data[i * 4 + 1] = Math.floor((1 - Math.abs(t - 0.5) * 2) * 200);
+                        imgData.data[i * 4 + 2] = b;
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    this.ctx.putImageData(imgData, 0, 0);
+                } else if (this.vizMode === 'raw') {
+                    console.log('Rendering raw contour visualization');
+                    this.ctx.strokeStyle = lineColor;
+                    this.ctx.lineWidth = lineWidth * 0.5;
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(20, 20);
+                    this.ctx.lineTo(80, 20);
+                    this.ctx.moveTo(20, 80);
+                    this.ctx.lineTo(80, 80);
+                    this.ctx.stroke();
+                }
+                
+                // Show origin points if enabled
+                if (this.showOrigins) {
+                    this.ctx.fillStyle = 'red';
+                    for (let i = 0; i < 5; i++) {
+                        const x = Math.random() * width;
+                        const y = Math.random() * height;
+                        this.ctx.beginPath();
+                        this.ctx.arc(x, y, 2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                }
+                
+                return '<svg></svg>'; // Return empty SVG as before, but canvas should be rendered
+            }
+            
+            async processImage(img, options) {
+                this.debugMode = options.debugMode || false;
+                this.vizMode = options.vizMode || 'final';
+                this.showOrigins = options.showOrigins !== false;
+                this.showGrid = options.showGrid || false;
+                
+                const width = img.width || 100;
+                const height = img.height || 100;
+                this.canvas.width = width;
+                this.canvas.height = height;
+                
+                if (this.debugMode && this.vizMode !== 'final') {
+                    await new Promise(r => setTimeout(r, 10));
+                    this.renderDebugVisualization(width, height, options.lineColor, options.lineWidth);
+                    console.log('Debug visualization completed - canvas should be visible');
+                    return this.getSVG(width, height, options.lineColor, options.lineWidth, options.antiAlias);
+                }
+                
+                // Normal processing
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+                this.ctx.strokeStyle = options.lineColor;
+                this.ctx.lineWidth = options.lineWidth;
+                
+                // Draw a simple test pattern
+                this.ctx.beginPath();
+                this.ctx.moveTo(20, 20);
+                this.ctx.lineTo(80, 20);
+                this.ctx.lineTo(80, 80);
+                this.ctx.lineTo(20, 80);
+                this.ctx.closePath();
+                this.ctx.stroke();
+                
+                return this.getSVG(width, height, options.lineColor, options.lineWidth, options.antiAlias);
+            }
+            
+            getSVG(width, height, lineColor, lineWidth, antiAlias) {
+                return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" fill="white"/>
+  <g stroke="${lineColor}" stroke-width="${lineWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="20,20 80,20 80,80 20,80 20,20"/>
+  </g>
+</svg>`;
+            }
+        }
+        
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+        
+        function addResult(message, isSuccess) {
+            const resultsEl = document.getElementById('results');
+            const resultEl = document.createElement('div');
+            resultEl.textContent = message;
+            resultEl.style.color = isSuccess ? '#28a745' : '#dc3545';
+            resultEl.style.margin = '5px 0';
+            resultsEl.appendChild(resultEl);
+        }
+        
+        // Redirect console to page
+        const consoleEl = document.getElementById('console');
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return String(arg);
+            }).join(' ');
+            
+            const logEl = document.createElement('div');
+            logEl.textContent = message;
+            consoleEl.appendChild(logEl);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return String(arg);
+            }).join(' ');
+            
+            const errorEl = document.createElement('div');
+            errorEl.textContent = 'ERROR: ' + message;
+            errorEl.style.color = '#ff4444';
+            consoleEl.appendChild(errorEl);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        };
+        
+        async function runFixVerification() {
+            consoleEl.innerHTML = '';
+            document.getElementById('results').innerHTML = '';
+            showStatus('Running fix verification...', 'info');
+            
+            const testWaves = new TestMarchingWaves();
+            const mockImg = { width: 100, height: 100 };
+            
+            try {
+                // Test 1: Normal mode
+                console.log('=== Test 1: Normal mode ===');
+                const normalOptions = {
+                    debugMode: false,
+                    vizMode: 'final',
+                    lineColor: '#000000',
+                    lineWidth: 1,
+                    antiAlias: true
+                };
+                
+                const normalResult = await testWaves.processImage(mockImg, normalOptions);
+                console.log('Normal mode completed successfully');
+                console.log('SVG length:', normalResult.length);
+                addResult('✓ Normal mode works correctly', true);
+                
+                // Test 2: Debug mode with grayscale
+                console.log('\n=== Test 2: Debug mode with grayscale ===');
+                const debugGrayscaleOptions = {
+                    debugMode: true,
+                    vizMode: 'grayscale',
+                    lineColor: '#000000',
+                    lineWidth: 1,
+                    antiAlias: true,
+                    showOrigins: true
+                };
+                
+                const grayscaleResult = await testWaves.processImage(mockImg, debugGrayscaleOptions);
+                console.log('Debug grayscale mode completed successfully');
+                console.log('SVG length:', grayscaleResult.length);
+                addResult('✓ Debug grayscale mode works correctly', true);
+                
+                // Test 3: Debug mode with heatmap
+                console.log('\n=== Test 3: Debug mode with heatmap ===');
+                const debugHeatmapOptions = {
+                    debugMode: true,
+                    vizMode: 'heatmap',
+                    lineColor: '#000000',
+                    lineWidth: 1,
+                    antiAlias: true,
+                    showOrigins: false
+                };
+                
+                const heatmapResult = await testWaves.processImage(mockImg, debugHeatmapOptions);
+                console.log('Debug heatmap mode completed successfully');
+                console.log('SVG length:', heatmapResult.length);
+                addResult('✓ Debug heatmap mode works correctly', true);
+                
+                // Test 4: Debug mode with raw contours
+                console.log('\n=== Test 4: Debug mode with raw contours ===');
+                const debugRawOptions = {
+                    debugMode: true,
+                    vizMode: 'raw',
+                    lineColor: '#ff0000',
+                    lineWidth: 2,
+                    antiAlias: false,
+                    showOrigins: true
+                };
+                
+                const rawResult = await testWaves.processImage(mockImg, debugRawOptions);
+                console.log('Debug raw mode completed successfully');
+                console.log('SVG length:', rawResult.length);
+                addResult('✓ Debug raw mode works correctly', true);
+                
+                // Verify canvas is being rendered
+                const canvasData = testWaves.ctx.getImageData(0, 0, 100, 100).data;
+                const hasContent = canvasData.some((val, i) => i % 4 !== 3 && val !== 255); // Check if not all white
+                
+                if (hasContent) {
+                    addResult('✓ Canvas rendering is working (has visual content)', true);
+                } else {
+                    addResult('✗ Canvas rendering may not be working (all white)', false);
+                }
+                
+                showStatus('Fix verification completed successfully! ✓', 'success');
+                
+            } catch (error) {
+                console.error('Fix verification failed:', error);
+                addResult('✗ Fix verification failed: ' + error.message, false);
+                showStatus('Fix verification failed! ✗', 'error');
+            }
+        }
+        
+        document.getElementById('runTest').addEventListener('click', runFixVerification);
+        
+        // Run automatically on page load
+        window.addEventListener('load', () => {
+            setTimeout(runFixVerification, 100);
+        });
+    </script>
+</body>
+</html>

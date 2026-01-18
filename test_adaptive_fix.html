@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Adaptive Contours Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        canvas { border: 1px solid #ccc; margin: 10px 0; }
+        .controls { margin: 10px 0; padding: 10px; background: #f5f5f5; }
+        button { padding: 8px 16px; margin: 5px; }
+        .log { margin-top: 20px; padding: 10px; background: #000; color: #0ff; font-family: monospace; height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Adaptive Contours Test</h1>
+    <div class="controls">
+        <button id="testAdaptive">Test Adaptive Contours</button>
+        <button id="testRegular">Test Regular Contours</button>
+        <div>Interval: <input type="range" id="interval" min="0.1" max="5" step="0.1" value="1"> <span id="intervalValue">1.0</span></div>
+    </div>
+    <canvas id="testCanvas" width="500" height="300"></canvas>
+    <div class="log" id="log"></div>
+
+    <script>
+        const canvas = document.getElementById('testCanvas');
+        const ctx = canvas.getContext('2d');
+        const log = document.getElementById('log');
+        
+        function logMessage(msg) {
+            const time = new Date().toLocaleTimeString();
+            log.innerHTML += `[$${time}] ${msg}\n`;
+            log.scrollTop = log.scrollHeight;
+        }
+        
+        // Simple test data - create a gradient pattern
+        function createTestData(width, height) {
+            const data = new Float32Array(width * height);
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    // Create a circular gradient pattern
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                    const normalized = dist / Math.sqrt(centerX * centerX + centerY * centerY);
+                    data[y * width + x] = normalized * 10;
+                }
+            }
+            return data;
+        }
+        
+        // Simplified adaptive level generation test
+        function testAdaptiveLevels() {
+            const width = canvas.width;
+            const height = canvas.height;
+            const interval = parseFloat(document.getElementById('interval').value);
+            
+            const solution = createTestData(width, height);
+            
+            // Find min/max values
+            let minVal = Infinity;
+            let maxVal = -Infinity;
+            for (let i = 0; i < solution.length; i++) {
+                if (solution[i] < minVal) minVal = solution[i];
+                if (solution[i] > maxVal) maxVal = solution[i];
+            }
+            
+            logMessage(`Testing with interval: ${interval}, range: ${minVal.toFixed(2)} - ${maxVal.toFixed(2)}`);
+            
+            // Generate adaptive levels (simplified version of the fixed algorithm)
+            const levels = [];
+            const range = maxVal - minVal;
+            const fixedLevelCount = Math.floor(range / interval);
+            
+            if (range < interval * 3 || fixedLevelCount < 3) {
+                logMessage('Using original level generation (range too small)');
+                for (let l = minVal + interval; l < maxVal; l += interval) {
+                    levels.push(l);
+                }
+            } else {
+                logMessage('Using adaptive level generation');
+                const maxIterations = Math.min(5000, fixedLevelCount * 2);
+                const minAdaptiveInterval = Math.max(interval * 0.3, 0.15);
+                const maxAdaptiveInterval = interval * 2.0;
+                let currentLevel = minVal + interval;
+                let iterations = 0;
+                
+                // Simple gradient simulation
+                const avgGradient = 0.7; // Simulated average gradient
+                
+                while (currentLevel < maxVal && iterations < maxIterations) {
+                    iterations++;
+                    levels.push(currentLevel);
+                    
+                    // Improved adaptation formula
+                    const adaptFactorBase = 0.8 + 0.2 * Math.exp(-avgGradient * 1.5);
+                    const adaptFactor = Math.max(0.5, Math.min(1.5, adaptFactorBase));
+                    const nextInterval = Math.max(minAdaptiveInterval, Math.min(maxAdaptiveInterval, interval * adaptFactor));
+                    
+                    logMessage(`Level ${iterations}: ${currentLevel.toFixed(2)} -> interval: ${nextInterval.toFixed(3)}, factor: ${adaptFactor.toFixed(3)}`);
+                    currentLevel += nextInterval;
+                }
+            }
+            
+            logMessage(`Generated ${levels.length} levels`);
+            
+            // Visualize the levels
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw the levels as horizontal lines
+            const scaleY = height / (maxVal - minVal);
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 1;
+            
+            for (const level of levels) {
+                const y = (level - minVal) * scaleY;
+                ctx.beginPath();
+                ctx.moveTo(0, height - y);
+                ctx.lineTo(width, height - y);
+                ctx.stroke();
+                
+                // Add level value
+                ctx.fillStyle = '#fff';
+                ctx.fillText(level.toFixed(1), 10, height - y);
+            }
+            
+            return levels;
+        }
+        
+        // Event listeners
+        document.getElementById('testAdaptive').addEventListener('click', testAdaptiveLevels);
+        document.getElementById('interval').addEventListener('input', function() {
+            document.getElementById('intervalValue').textContent = this.value;
+        });
+        
+        // Initialize
+        logMessage('Adaptive Contours Test Ready');
+    </script>
+</body>
+</html>

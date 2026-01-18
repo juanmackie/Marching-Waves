@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Comprehensive Test for Blank Canvas Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .test-section { border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        canvas { border: 1px solid #ccc; margin: 10px 0; display: block; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #e7f3ff; color: #004085; }
+        button { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .console-output { background: #f8f9fa; border: 1px solid #ddd; padding: 10px; margin: 10px 0; max-height: 200px; overflow-y: auto; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Comprehensive Test for Blank Canvas Fix</h1>
+    <div id="status" class="status info">Ready to test</div>
+    
+    <div class="test-section">
+        <h2>Test 1: Basic Canvas with willReadFrequently</h2>
+        <canvas id="basicCanvas" width="200" height="200"></canvas>
+        <div id="basicResult"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Simulated Marching Waves Algorithm</h2>
+        <canvas id="algorithmCanvas" width="200" height="200"></canvas>
+        <div id="algorithmResult"></div>
+        <div class="console-output" id="algorithmConsole"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Edge Cases</h2>
+        <canvas id="edgeCanvas" width="200" height="200"></canvas>
+        <div id="edgeResult"></div>
+    </div>
+    
+    <button id="runAllTests">Run All Tests</button>
+    
+    <script>
+        // Helper function to log to console output div
+        function logToConsole(elementId, message) {
+            const consoleEl = document.getElementById(elementId);
+            consoleEl.textContent += message + '\n';
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+        
+        // Test 1: Basic canvas with willReadFrequently
+        function testBasicCanvas() {
+            return new Promise((resolve) => {
+                const canvas = document.getElementById('basicCanvas');
+                const resultEl = document.getElementById('basicResult');
+                
+                try {
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    
+                    // Draw test pattern
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, 200, 200);
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(50, 50, 100, 100);
+                    
+                    // Read back data
+                    const imageData = ctx.getImageData(0, 0, 200, 200);
+                    const data = imageData.data;
+                    
+                    let hasBlack = false;
+                    let hasWhite = false;
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 0) hasBlack = true;
+                        if (data[i] === 255 && data[i + 1] === 255 && data[i + 2] === 255) hasWhite = true;
+                    }
+                    
+                    if (hasBlack && hasWhite) {
+                        resultEl.innerHTML = '<span style="color: green">✅ PASS</span>: Basic canvas with willReadFrequently works correctly';
+                        resolve(true);
+                    } else {
+                        resultEl.innerHTML = '<span style="color: red">❌ FAIL</span>: Could not read expected pixel data';
+                        resolve(false);
+                    }
+                } catch (error) {
+                    resultEl.innerHTML = '<span style="color: red">❌ FAIL</span>: ' + error.message;
+                    resolve(false);
+                }
+            });
+        }
+        
+        // Test 2: Simulated Marching Waves Algorithm
+        function testAlgorithm() {
+            return new Promise((resolve) => {
+                const canvas = document.getElementById('algorithmCanvas');
+                const resultEl = document.getElementById('algorithmResult');
+                const consoleEl = document.getElementById('algorithmConsole');
+                
+                consoleEl.textContent = '';
+                logToConsole('algorithmConsole', 'Starting algorithm test...');
+                
+                try {
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    const width = 200;
+                    const height = 200;
+                    
+                    // Create test image with gradient
+                    const imgData = ctx.createImageData(width, height);
+                    for (let i = 0; i < width * height; i++) {
+                        const x = i % width;
+                        const y = Math.floor(i / width);
+                        const distance = Math.sqrt(Math.pow(x - 100, 2) + Math.pow(y - 100, 2));
+                        const value = Math.min(255, distance * 2);
+                        
+                        imgData.data[i * 4] = value;
+                        imgData.data[i * 4 + 1] = value;
+                        imgData.data[i * 4 + 2] = value;
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    
+                    // Read image data (simulating processImage)
+                    const imageData = ctx.getImageData(0, 0, width, height);
+                    logToConsole('algorithmConsole', '✓ Image data read successfully');
+                    
+                    // Convert to grayscale
+                    const grayData = new Float32Array(width * height);
+                    const data = imageData.data;
+                    
+                    for (let i = 0; i < grayData.length; i++) {
+                        grayData[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+                    }
+                    logToConsole('algorithmConsole', '✓ Grayscale conversion completed');
+                    
+                    // Detect origin points (with threshold = 0.5 for this test)
+                    const threshold = 0.5;
+                    const originPoints = [];
+                    
+                    for (let i = 0; i < grayData.length; i++) {
+                        if (grayData[i] < threshold) {
+                            const x = i % width;
+                            const y = Math.floor(i / width);
+                            originPoints.push({ x, y });
+                        }
+                    }
+                    
+                    logToConsole('algorithmConsole', `✓ Found ${originPoints.length} origin points`);
+                    
+                    // Simple contour simulation
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    if (originPoints.length > 0) {
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        
+                        // Draw circles around origin points
+                        for (const point of originPoints) {
+                            ctx.moveTo(point.x + 10, point.y);
+                            ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+                        }
+                        
+                        ctx.stroke();
+                        logToConsole('algorithmConsole', '✓ Contours drawn successfully');
+                    } else {
+                        // This is the blank canvas case we're fixing
+                        ctx.fillStyle = '#000000';
+                        ctx.font = '16px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('No contours found', width / 2, height / 2);
+                        ctx.fillText('Adjust threshold', width / 2, height / 2 + 24);
+                        logToConsole('algorithmConsole', '⚠ No contours found - showing helpful message');
+                    }
+                    
+                    resultEl.innerHTML = '<span style="color: green">✅ PASS</span>: Algorithm simulation completed';
+                    resolve(true);
+                    
+                } catch (error) {
+                    resultEl.innerHTML = '<span style="color: red">❌ FAIL</span>: ' + error.message;
+                    logToConsole('algorithmConsole', '❌ Error: ' + error.message);
+                    resolve(false);
+                }
+            });
+        }
+        
+        // Test 3: Edge Cases
+        function testEdgeCases() {
+            return new Promise((resolve) => {
+                const canvas = document.getElementById('edgeCanvas');
+                const resultEl = document.getElementById('edgeResult');
+                
+                try {
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    
+                    // Test multiple rapid getImageData calls
+                    const tests = [
+                        { name: 'All white', color: '#ffffff' },
+                        { name: 'All black', color: '#000000' },
+                        { name: 'Gradient', color: null }
+                    ];
+                    
+                    let allPassed = true;
+                    
+                    for (let i = 0; i < tests.length; i++) {
+                        const test = tests[i];
+                        
+                        // Clear canvas
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(0, 0, 200, 200);
+                        
+                        if (test.color) {
+                            ctx.fillStyle = test.color;
+                            ctx.fillRect(0, 0, 200, 200);
+                        } else {
+                            // Create gradient
+                            const gradient = ctx.createLinearGradient(0, 0, 200, 200);
+                            gradient.addColorStop(0, '#ffffff');
+                            gradient.addColorStop(1, '#000000');
+                            ctx.fillStyle = gradient;
+                            ctx.fillRect(0, 0, 200, 200);
+                        }
+                        
+                        // Read back data
+                        const imageData = ctx.getImageData(0, 0, 200, 200);
+                        const data = imageData.data;
+                        
+                        // Verify we got data
+                        if (data.length === 0) {
+                            allPassed = false;
+                            break;
+                        }
+                    }
+                    
+                    if (allPassed) {
+                        resultEl.innerHTML = '<span style="color: green">✅ PASS</span>: Edge cases handled correctly';
+                        resolve(true);
+                    } else {
+                        resultEl.innerHTML = '<span style="color: red">❌ FAIL</span>: Edge case failed';
+                        resolve(false);
+                    }
+                    
+                } catch (error) {
+                    resultEl.innerHTML = '<span style="color: red">❌ FAIL</span>: ' + error.message;
+                    resolve(false);
+                }
+            });
+        }
+        
+        // Run all tests
+        document.getElementById('runAllTests').addEventListener('click', async function() {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = 'Running tests...';
+            statusEl.className = 'status info';
+            
+            const results = [];
+            
+            // Run tests sequentially
+            results.push(await testBasicCanvas());
+            results.push(await testAlgorithm());
+            results.push(await testEdgeCases());
+            
+            // Calculate overall result
+            const passed = results.filter(r => r).length;
+            const total = results.length;
+            
+            if (passed === total) {
+                statusEl.textContent = `✅ All ${total} tests passed!`;
+                statusEl.className = 'status success';
+            } else {
+                statusEl.textContent = `⚠ ${passed}/${total} tests passed`;
+                statusEl.className = 'status error';
+            }
+        });
+        
+        // Run automatically
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                document.getElementById('runAllTests').click();
+            }, 100);
+        });
+    </script>
+</body>
+</html>

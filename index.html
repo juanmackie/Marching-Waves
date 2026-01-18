@@ -1,0 +1,4335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marching Waves Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 1.1rem;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 12px;
+            height: fit-content;
+        }
+
+        .panel {
+            margin-bottom: 20px;
+        }
+
+        .panel h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            margin-bottom: 12px;
+        }
+
+        .drop-zone {
+            border: 2px dashed #444;
+            border-radius: 8px;
+            padding: 20px 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #1a1a2e;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.1);
+        }
+
+        .drop-zone-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .drop-zone p {
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .sample-btn {
+            width: 100%;
+            padding: 8px;
+            border: 1px dashed #444;
+            border-radius: 6px;
+            background: transparent;
+            color: #888;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .sample-btn:hover {
+            border-color: #00d9ff;
+            color: #00d9ff;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: #ccc;
+            margin-bottom: 6px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d9ff;
+            cursor: pointer;
+        }
+
+        .value-display {
+            text-align: right;
+            font-size: 0.8rem;
+            color: #00d9ff;
+            margin-top: 4px;
+        }
+
+        /* Info Icon Styles */
+        .label-with-info {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .label-with-info label {
+            margin-bottom: 0;
+        }
+
+        .info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            font-size: 14px;
+            color: #888;
+            cursor: help;
+            position: relative;
+            transition: color 0.2s ease;
+            user-select: none;
+        }
+
+        .info-icon:hover,
+        .info-icon:focus {
+            color: #00d9ff;
+            outline: none;
+        }
+
+        /* Tooltip Base */
+        .info-icon::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 8px);
+            transform: translateX(-50%) translateY(-4px);
+            background: rgba(0, 30, 60, 0.98);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            white-space: normal;
+            width: 220px;
+            text-align: left;
+            pointer-events: none;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Tooltip Arrow */
+        .info-icon::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: calc(100% + 2px);
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: rgba(0, 30, 60, 0.98);
+            pointer-events: none;
+            z-index: 1001;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s ease, visibility 0.2s;
+        }
+
+        /* Desktop Hover Tooltip */
+        @media (hover: hover) and (pointer: fine) {
+            .info-icon:hover::after,
+            .info-icon:hover::before {
+                opacity: 1;
+                visibility: visible;
+                transform: translateX(-50%) translateY(0);
+            }
+        }
+
+        /* Mobile/Touch: Click-to-toggle */
+        .info-icon.active::after,
+        .info-icon.active::before {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Focus state for keyboard navigation */
+        .info-icon:focus::after,
+        .info-icon:focus::before {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Checkbox group info icon positioning */
+        .checkbox-group .info-icon {
+            margin-left: auto;
+        }
+
+        /* Adjust checkbox-group to accommodate icon */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        /* Tooltip position adjustment for right-aligned icons */
+        .checkbox-group .info-icon::after {
+            left: auto;
+            right: 0;
+            transform: translateX(0) translateY(-4px);
+        }
+
+        .checkbox-group .info-icon::before {
+            left: auto;
+            right: 10px;
+            transform: translateX(0);
+        }
+
+        .checkbox-group .info-icon:hover::after,
+        .checkbox-group .info-icon:focus::after,
+        .checkbox-group .info-icon.active::after {
+            transform: translateX(0) translateY(0);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 900px) {
+            .info-icon::after {
+                width: 200px;
+                font-size: 0.7rem;
+                padding: 6px 10px;
+            }
+        }
+
+        /* Color picker group with info icon */
+        .color-picker-group-with-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .color-picker-group-with-info .info-icon {
+            margin-left: auto;
+        }
+
+        .color-picker-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .color-picker-group input[type="color"] {
+            width: 40px;
+            height: 30px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .color-picker-group span {
+            font-size: 0.85rem;
+            color: #ccc;
+        }
+
+        .select-group {
+            margin-bottom: 12px;
+        }
+
+        .select-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: #ccc;
+            margin-bottom: 6px;
+        }
+
+        .select-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #333;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .select-group select:focus {
+            outline: none;
+            border-color: #00d9ff;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            background: #00b8d9;
+        }
+
+        .btn-primary:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #333;
+            color: #eee;
+        }
+
+        .btn-secondary:hover {
+            background: #444;
+        }
+
+        .btn-cancel {
+            background: #ff4444;
+            color: #fff;
+        }
+
+        .btn-cancel:hover {
+            background: #cc3333;
+        }
+
+        .preview-section {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .preview-header h3 {
+            color: #fff;
+        }
+
+        .preview-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #1a1a2e;
+            border-radius: 8px;
+            min-height: 500px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .preview-container.has-image {
+            background: repeating-conic-gradient(#222 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px;
+        }
+
+        #dropPreview {
+            max-width: 100%;
+            max-height: 100%;
+            display: none;
+        }
+
+        .placeholder {
+            text-align: center;
+            color: #666;
+        }
+
+        .placeholder-icon {
+            font-size: 4rem;
+            margin-bottom: 15px;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #00d9ff;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .progress-text {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 0.85rem;
+            display: none;
+        }
+
+        .status.success {
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .status.error {
+            background: rgba(255, 68, 68, 0.1);
+            color: #ff4444;
+            border: 1px solid rgba(255, 68, 68, 0.3);
+        }
+
+        .status.info {
+            background: rgba(0, 217, 255, 0.1);
+            color: #00d9ff;
+            border: 1px solid rgba(0, 217, 255, 0.3);
+        }
+
+        .status.warning {
+            background: rgba(255, 200, 0, 0.1);
+            color: #ffc800;
+            border: 1px solid rgba(255, 200, 0, 0.3);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #00d9ff;
+        }
+
+        .checkbox-group label {
+            font-size: 0.85rem;
+            color: #ccc;
+            cursor: pointer;
+        }
+
+        .canvas-container {
+            display: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        #outputCanvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .debug-panel {
+            border-top: 1px solid #333;
+            padding-top: 15px;
+            margin-top: 15px;
+        }
+
+        .perf-stats {
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: #888;
+            background: #1a1a2e;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            display: none;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .perf-stats.visible {
+            display: block;
+        }
+
+        .cancel-btn-container {
+            display: none;
+        }
+
+        .cancel-btn-container.visible {
+            display: block;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        .selection-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: none;
+        }
+        .selection-overlay.active {
+            display: block;
+            cursor: crosshair;
+        }
+        .selection-box {
+            position: absolute;
+            border: 2px dashed #e91e63;
+            background: rgba(233, 30, 99, 0.1);
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Marching Waves</h1>
+            <p class="subtitle">Generate contour-based artwork using the Eikonal Equation</p>
+        </header>
+
+        <div class="main-content">
+            <aside class="sidebar">
+                <div id="gpuStatus" class="status info" style="display: block; margin-bottom: 20px; text-align: center; font-weight: bold;">
+                    <span id="gpuStatusIcon">⚙️</span> GPU Acceleration: <span id="gpuStatusText">Initializing...</span>
+                </div>
+                <div class="panel">
+                    <h3>Input Image</h3>
+                    <div class="drop-zone" id="dropZone">
+                        <div class="drop-zone-icon">📁</div>
+                        <p>Drop image here or click to browse</p>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*">
+                    <button class="sample-btn" id="sampleBtn">Load Sample Pattern</button>
+                </div>
+
+                <div class="panel">
+                    <h3>Parameters</h3>
+                    <div class="select-group">
+                        <div class="label-with-info">
+                            <label>Mode</label>
+                            <span class="info-icon"
+                                  data-tooltip="Select the primary generation algorithm. Contours follow elevation lines, while Streamlines follow the flow of the image gradient."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Modes">ⓘ</span>
+                        </div>
+                        <select id="modeSelect">
+                            <option value="contours">Marching Contours</option>
+                            <option value="streamlines">Flow Streamlines</option>
+                            <option value="stipple">Weighted Stipple</option>
+                            <option value="tsp">TSP Art (Continuous Line)</option>
+                        </select>
+                    </div>
+                    <div class="select-group">
+                        <div class="label-with-info">
+                            <label>Preset</label>
+                            <span class="info-icon"
+                                  data-tooltip="Choose a preset to quickly adjust all parameters to predefined configurations for different artistic styles and densities."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Presets">ⓘ</span>
+                        </div>
+                        <select id="presetSelect">
+                            <option value="custom">Custom</option>
+                            <option value="topo-map">Topographic Map</option>
+                            <option value="blueprint">Blueprint</option>
+                            <option value="flowing-silk">Flowing Silk</option>
+                            <option value="marble-flow">Marble Flow</option>
+                            <option value="ink-stipple">Ink Stipple</option>
+                            <option value="tangled-string">Tangled String (TSP)</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Contour Interval</label>
+                            <span class="info-icon"
+                                  data-tooltip="Controls spacing between contour lines. Lower values create denser patterns, higher values create sparser patterns."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Contour Interval">ⓘ</span>
+                        </div>
+                        <input type="range" id="interval" min="2" max="20" value="8">
+                        <div class="value-display" id="intervalValue">8</div>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Line Width</label>
+                            <span class="info-icon"
+                                  data-tooltip="Controls the thickness of drawn lines. Range from 0.5 (thin) to 3.0 (thick) pixels."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Line Width">ⓘ</span>
+                        </div>
+                        <input type="range" id="lineWidth" min="0.5" max="3" step="0.1" value="1">
+                        <div class="value-display" id="lineWidthValue">1.0</div>
+                    </div>
+                     <div class="control-group">
+                         <div class="label-with-info">
+                             <label>Threshold</label>
+                             <span class="info-icon"
+                                   data-tooltip="Determines which pixels become origin points for contours. Lower values select darker pixels, higher values select lighter pixels."
+                                   role="button"
+                                   tabindex="0"
+                                   aria-label="Information about Threshold">ⓘ</span>
+                         </div>
+                         <input type="range" id="threshold" min="0" max="100" value="50">
+                         <div class="value-display" id="thresholdValue">50</div>
+                     </div>
+                </div>
+
+                <div class="panel">
+                    <h3>Adaptive Contours</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="edgeGuidance" checked>
+                        <label for="edgeGuidance">Edge Guidance</label>
+                        <span class="info-icon"
+                              data-tooltip="When enabled, contours will snap to detected image edges for more accurate feature representation."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Edge Guidance">ⓘ</span>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Edge Sensitivity</label>
+                            <span class="info-icon"
+                                  data-tooltip="Controls how strongly contours snap to edges. Higher values create more edge-following behavior."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Edge Sensitivity">ⓘ</span>
+                        </div>
+                        <input type="range" id="edgeSensitivity" min="0" max="1" step="0.05" value="0.6">
+                        <div class="value-display" id="edgeSensitivityValue">0.60</div>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Detail Level</label>
+                            <span class="info-icon"
+                                  data-tooltip="Controls adaptive contour density. Higher values preserve more detail in complex areas."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Detail Level">ⓘ</span>
+                        </div>
+                        <input type="range" id="detailLevel" min="0" max="1" step="0.05" value="0.7">
+                        <div class="value-display" id="detailLevelValue">0.70</div>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Contour Smoothness</label>
+                            <span class="info-icon"
+                                  data-tooltip="Controls post-processing smoothing of contour paths. Higher values create smoother curves."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Contour Smoothness">ⓘ</span>
+                        </div>
+                        <input type="range" id="contourSmoothness" min="0" max="1" step="0.05" value="0.65">
+                        <div class="value-display" id="contourSmoothnessValue">0.65</div>
+                    </div>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Feature Importance</label>
+                            <span class="info-icon"
+                                  data-tooltip="Controls bias towards important image features. Higher values emphasize significant features."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Feature Importance">ⓘ</span>
+                        </div>
+                        <input type="range" id="featureImportance" min="0" max="1" step="0.05" value="0.6">
+                        <div class="value-display" id="featureImportanceValue">0.60</div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>Style</h3>
+                    <div class="color-picker-group-with-info">
+                        <input type="color" id="lineColor" value="#000000">
+                        <span>Line Color</span>
+                        <span class="info-icon"
+                              data-tooltip="Sets the color of the generated contour lines in the final artwork."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Line Color">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group" style="margin-top: 15px;">
+                        <input type="checkbox" id="invert" checked>
+                        <label for="invert">Invert Colors</label>
+                        <span class="info-icon"
+                              data-tooltip="Reverses which pixels become origin points. When checked, light areas generate contours instead of dark areas."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Invert Colors">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="antiAlias" checked>
+                        <label for="antiAlias">Anti-aliasing</label>
+                        <span class="info-icon"
+                              data-tooltip="Smooths line edges for a cleaner appearance. Disable for sharper, pixel-precise lines."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Anti-aliasing">ⓘ</span>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h3>Performance</h3>
+                    <div class="control-group">
+                        <div class="label-with-info">
+                            <label>Max Segments: <span id="maxSegValue">50000</span></label>
+                            <span class="info-icon"
+                                  data-tooltip="Limits the maximum number of line segments for performance. Higher values allow more detail but slower processing."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Max Segments">ⓘ</span>
+                        </div>
+                        <input type="range" id="maxSegments" min="10000" max="200000" value="50000" step="5000">
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="skipJoining">
+                        <label for="skipJoining">Skip path joining (faster)</label>
+                        <span class="info-icon"
+                              data-tooltip="Disables line connection optimization. Faster processing but may result in disconnected segments."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Skip path joining">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="showProgress" checked>
+                        <label for="showProgress">Show progress</label>
+                        <span class="info-icon"
+                              data-tooltip="Displays a progress bar during image processing. Disable for slight performance improvement."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Show progress">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="livePreview" checked>
+                        <label for="livePreview">Live preview</label>
+                        <span class="info-icon"
+                              data-tooltip="Updates the canvas in real-time during extraction. Disable for faster processing without intermediate updates."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Live preview">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="useGPU" checked>
+                        <label for="useGPU">GPU acceleration</label>
+                        <span class="info-icon"
+                              data-tooltip="Uses WebGPU for faster computation. Automatically falls back to CPU if unavailable."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about GPU acceleration">ⓘ</span>
+                    </div>
+                </div>
+
+                <div class="panel debug-panel">
+                    <h3>Debug</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="debugMode">
+                        <label for="debugMode">Enable Debug Mode</label>
+                        <span class="info-icon"
+                              data-tooltip="Enables advanced visualization and diagnostic tools for development and troubleshooting."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Debug mode">ⓘ</span>
+                    </div>
+                    <div class="select-group" style="display: none;" id="vizModeGroup">
+                        <div class="label-with-info">
+                            <label>Visualization</label>
+                            <span class="info-icon"
+                                  data-tooltip="Selects the debug view mode. Choose between final result, grayscale conversion, solution heatmap, or raw contours."
+                                  role="button"
+                                  tabindex="0"
+                                  aria-label="Information about Visualization">ⓘ</span>
+                        </div>
+                        <select id="vizMode">
+                            <option value="final">Final Result</option>
+                            <option value="grayscale">Grayscale</option>
+                            <option value="heatmap">Solution Heatmap</option>
+                            <option value="raw">Raw Contours</option>
+                        </select>
+                    </div>
+                    <div class="checkbox-group" style="display: none;" id="originGroup">
+                        <input type="checkbox" id="showOrigins" checked>
+                        <label for="showOrigins">Show Origin Points</label>
+                        <span class="info-icon"
+                              data-tooltip="Displays red dots at origin points where contour generation begins."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Show origins">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group" style="display: none;" id="gridGroup">
+                        <input type="checkbox" id="showGrid">
+                        <label for="showGrid">Show Grid</label>
+                        <span class="info-icon"
+                              data-tooltip="Overlays a grid on the canvas to visualize the pixel coordinate system."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Show grid">ⓘ</span>
+                    </div>
+                    <div class="checkbox-group" style="display: none;" id="perfGroup">
+                        <input type="checkbox" id="showPerf" checked>
+                        <label for="showPerf">Performance Metrics</label>
+                        <span class="info-icon"
+                              data-tooltip="Shows detailed timing information for each processing stage."
+                              role="button"
+                              tabindex="0"
+                              aria-label="Information about Performance metrics">ⓘ</span>
+                    </div>
+                    <div class="perf-stats" id="perfStats"></div>
+                </div>
+
+                <div class="panel">
+                    <h3>Actions</h3>
+                    <button class="btn btn-primary" id="generateBtn" disabled>Generate Artwork</button>
+                    <div class="cancel-btn-container" id="cancelBtnContainer" style="display: none;">
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <button class="btn btn-secondary" id="pauseBtn" style="background: #f39c12; color: white; flex: 1;">Pause</button>
+                            <button class="btn btn-secondary" id="resumeBtn" style="background: #27ae60; color: white; flex: 1; display: none;">Resume</button>
+                        </div>
+                        <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
+                    </div>
+                    <button class="btn btn-secondary" id="selectionBtn" style="margin-top: 10px;">Select Area to Rerun</button>
+                    <button class="btn btn-primary" id="rerunBtn" style="display: none; background: #9b59b6;">Rerun Selection</button>
+                    <button class="btn btn-secondary" id="exportBtn" disabled>Export SVG</button>
+                    <button class="btn btn-secondary" id="clearBtn">Clear All</button>
+                </div>
+
+                <div class="progress-container" id="progressContainer">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-text" id="progressText">Processing...</div>
+                </div>
+
+                <div class="status" id="status"></div>
+            </aside>
+
+            <section class="preview-section">
+                <div class="preview-header">
+                    <h3>Preview</h3>
+                </div>
+                <div class="preview-container" id="previewContainer">
+                    <div class="placeholder" id="placeholder">
+                        <div class="placeholder-icon">🎨</div>
+                        <p>Drop an image to get started</p>
+                    </div>
+                    <img id="dropPreview" alt="Preview">
+                    <div class="canvas-container" id="canvasContainer">
+                        <canvas id="outputCanvas"></canvas>
+                    </div>
+                    <div class="selection-overlay" id="selectionOverlay">
+                        <div class="selection-box" id="selectionBox"></div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        class WebGPUManager {
+            constructor() {
+                this.device = null;
+                this.context = null;
+                this.available = false;
+                this.initialized = false;
+            }
+
+            async init() {
+                if (this.initialized) return this.available;
+                
+                if (!navigator.gpu) {
+                    console.warn('WebGPU not supported, falling back to CPU');
+                    this.available = false;
+                    this.initialized = true;
+                    return false;
+                }
+
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (!adapter) {
+                        console.warn('No GPU adapter found, falling back to CPU');
+                        this.available = false;
+                        this.initialized = true;
+                        return false;
+                    }
+
+                    this.device = await adapter.requestDevice();
+                    this.available = true;
+                    this.initialized = true;
+                    console.log('WebGPU initialized successfully');
+                    return true;
+                } catch (error) {
+                    console.warn('WebGPU initialization failed:', error);
+                    this.available = false;
+                    this.initialized = true;
+                    return false;
+                }
+            }
+
+            createBuffer(size, usage) {
+                if (!this.device) throw new Error('WebGPU not initialized');
+                return this.device.createBuffer({
+                    size,
+                    usage,
+                    mappedAtCreation: false
+                });
+            }
+
+            createComputePipeline(code, entryPoint) {
+                if (!this.device) throw new Error('WebGPU not initialized');
+                const shaderModule = this.device.createShaderModule({ code });
+                return this.device.createComputePipeline({
+                    layout: 'auto',
+                    compute: {
+                        module: shaderModule,
+                        entryPoint
+                    }
+                });
+            }
+
+            async executeCompute(pipeline, bindGroup, workgroups, commandBuffer) {
+                if (!this.device) throw new Error('WebGPU not initialized');
+
+                const passEncoder = commandBuffer.beginComputePass();
+                passEncoder.setPipeline(pipeline);
+                passEncoder.setBindGroup(0, bindGroup);
+                passEncoder.dispatchWorkgroups(workgroups.x, workgroups.y, workgroups.z);
+                passEncoder.end();
+            }
+
+            async readBuffer(buffer, size) {
+                if (!this.device) throw new Error('WebGPU not initialized');
+                const readBuffer = this.device.createBuffer({
+                    size,
+                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+                });
+
+                const commandEncoder = this.device.createCommandEncoder();
+                commandEncoder.copyBufferToBuffer(buffer, 0, readBuffer, 0, size);
+                this.device.queue.submit([commandEncoder.finish()]);
+
+                await readBuffer.mapAsync(GPUMapMode.READ);
+                const data = new Float32Array(readBuffer.getMappedRange().slice(0));
+                readBuffer.unmap();
+                readBuffer.destroy();
+
+                return data;
+            }
+
+            async runGrayscaleConversion(imageData, width, height) {
+                const pixelCount = width * height;
+                const inputBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+                const outputBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
+                
+                this.device.queue.writeBuffer(inputBuffer, 0, imageData.data);
+
+                const shaderCode = `
+                    @group(0) @binding(0) var<storage, read> input: array<u32>;
+                    @group(0) @binding(1) var<storage, read_write> output: array<f32>;
+
+                    @compute @workgroup_size(256)
+                    fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                        let idx = id.x;
+                        if (idx >= ${pixelCount}u) { return; }
+
+                        let pixel = input[idx];
+                        let r = f32((pixel >> 0u) & 0xFFu);
+                        let g = f32((pixel >> 8u) & 0xFFu);
+                        let b = f32((pixel >> 16u) & 0xFFu);
+                        
+                        output[idx] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+                    }
+                `;
+
+                const pipeline = this.createComputePipeline(shaderCode, 'main');
+                const bindGroup = this.device.createBindGroup({
+                    layout: pipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: inputBuffer } },
+                        { binding: 1, resource: { buffer: outputBuffer } }
+                    ]
+                });
+
+                const workgroups = Math.ceil(pixelCount / 256);
+                const commandEncoder = this.device.createCommandEncoder();
+                await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
+                this.device.queue.submit([commandEncoder.finish()]);
+
+                const result = await this.readBuffer(outputBuffer, pixelCount * 4);
+
+                inputBuffer.destroy();
+                outputBuffer.destroy();
+
+                return result;
+            }
+
+            async runMarchingSquares(solutionData, width, height, interval, maxSegments) {
+                const cellsX = width - 1;
+                const cellsY = height - 1;
+                const cellCount = cellsX * cellsY;
+                
+                const solutionBuffer = this.createBuffer(width * height * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+                this.device.queue.writeBuffer(solutionBuffer, 0, solutionData);
+
+                const maxSegmentsPerCell = 2;
+                const segmentBuffer = this.createBuffer(cellCount * maxSegmentsPerCell * 4 * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
+                const countBuffer = this.createBuffer(4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
+
+                const shaderCode = `
+                    @group(0) @binding(0) var<storage, read> solution: array<f32>;
+                    @group(0) @binding(1) var<storage, read_write> segments: array<vec4<f32>>;
+                    @group(0) @binding(2) var<storage, read_write> segmentCount: atomic<u32>;
+
+                    const INFINITY: f32 = 999999.0;
+
+                    fn getSolution(x: u32, y: u32) -> f32 {
+                        if (x >= ${width}u || y >= ${height}u) { return INFINITY; }
+                        return solution[y * ${width}u + x];
+                    }
+
+                    fn interp(v1: f32, v2: f32, level: f32) -> f32 {
+                        if (v1 == INFINITY || v2 == INFINITY) { return 0.5; }
+                        if (abs(v2 - v1) < 0.0001) { return 0.5; }
+                        return (level - v1) / (v2 - v1);
+                    }
+
+                    @compute @workgroup_size(256)
+                    fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                        let cellIdx = id.x;
+                        if (cellIdx >= ${cellCount}u) { return; }
+
+                        let x = cellIdx % ${cellsX}u;
+                        let y = cellIdx / ${cellsX}u;
+
+                        const v00 = getSolution(x, y);
+                        const v10 = getSolution(x + 1u, y);
+                        const v01 = getSolution(x, y + 1u);
+                        const v11 = getSolution(x + 1u, y + 1u);
+
+                        let minVal = v00;
+                        if (v10 < minVal && v10 != INFINITY) { minVal = v10; }
+                        if (v01 < minVal && v01 != INFINITY) { minVal = v01; }
+                        if (v11 < minVal && v11 != INFINITY) { minVal = v11; }
+
+                        let maxVal = v00;
+                        if (v10 > maxVal && v10 != INFINITY) { maxVal = v10; }
+                        if (v01 > maxVal && v01 != INFINITY) { maxVal = v01; }
+                        if (v11 > maxVal && v11 != INFINITY) { maxVal = v11; }
+
+                        if (minVal == INFINITY) { return; }
+
+                        var level = minVal + ${interval};
+                        let segmentIdx = cellIdx * 2u;
+
+                        while (level < maxVal) {
+                            let code = 0u;
+                            if (v00 >= level) { code |= 1u; }
+                            if (v10 >= level) { code |= 2u; }
+                            if (v01 >= level) { code |= 4u; }
+                            if (v11 >= level) { code |= 8u; }
+
+                            let i = atomicAdd(&segmentCount, 1u);
+                            if (i >= ${maxSegments}u) { return; }
+
+                            switch (code) {
+                                case 1u, 14u: {
+                                    let t = interp(v00, v10, level);
+                                    segments[i] = vec4<f32>(f32(x), f32(y) + t, f32(x) + 0.5, f32(y));
+                                }
+                                case 2u, 13u: {
+                                    let t = interp(v10, v11, level);
+                                    segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t);
+                                }
+                                case 3u, 12u: {
+                                    let t1 = interp(v00, v10, level);
+                                    let t2 = interp(v01, v11, level);
+                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 1.0, f32(y) + t2);
+                                }
+                                case 4u, 11u: {
+                                    let t = interp(v01, v11, level);
+                                    segments[i] = vec4<f32>(f32(x) + 0.5, f32(y) + 1.0, f32(x) + t, f32(y) + 1.0);
+                                }
+                                case 5u: {
+                                    let t1 = interp(v00, v10, level);
+                                    let t2 = interp(v01, v11, level);
+                                    let i = atomicAdd(&segmentCount, 1u);
+                                    if (i >= ${maxSegments}u) { return; }
+                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
+                                    let i2 = atomicAdd(&segmentCount, 1u);
+                                    if (i2 >= ${maxSegments}u) { return; }
+                                    segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + t2, f32(y) + 1.0);
+                                }
+                                case 6u, 9u: {
+                                    segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 0.5, f32(y) + 1.0);
+                                }
+                                case 7u, 8u: {
+                                    let t1 = interp(v00, v10, level);
+                                    let t2 = interp(v10, v11, level);
+                                    let i = atomicAdd(&segmentCount, 1u);
+                                    if (i >= ${maxSegments}u) { return; }
+                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
+                                    let i2 = atomicAdd(&segmentCount, 1u);
+                                    if (i2 >= ${maxSegments}u) { return; }
+                                    segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
+                                }
+                                case 10u: {
+                                    let t1 = interp(v00, v10, level);
+                                    let t2 = interp(v01, v11, level);
+                                    let i = atomicAdd(&segmentCount, 1u);
+                                    if (i >= ${maxSegments}u) { return; }
+                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y));
+                                    let i2 = atomicAdd(&segmentCount, 1u);
+                                    if (i2 >= ${maxSegments}u) { return; }
+                                    segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
+                                }
+                                default: {}
+                            }
+
+                            level += ${interval};
+                        }
+                    }
+                `;
+
+                const pipeline = this.createComputePipeline(shaderCode, 'main');
+                const bindGroup = this.device.createBindGroup({
+                    layout: pipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: solutionBuffer } },
+                        { binding: 1, resource: { buffer: segmentBuffer } },
+                        { binding: 2, resource: { buffer: countBuffer } }
+                    ]
+                });
+
+                const workgroups = Math.ceil(cellCount / 256);
+                const commandEncoder = this.device.createCommandEncoder();
+                await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
+                this.device.queue.submit([commandEncoder.finish()]);
+
+                const countData = await this.readBuffer(countBuffer, 4);
+                const segmentCount = Math.min(countData[0], maxSegments);
+                
+                const segmentData = await this.readBuffer(segmentBuffer, segmentCount * 4 * 4);
+
+                const lines = [];
+                for (let i = 0; i < segmentCount; i++) {
+                    lines.push({
+                        x1: segmentData[i * 4],
+                        y1: segmentData[i * 4 + 1],
+                        x2: segmentData[i * 4 + 2],
+                        y2: segmentData[i * 4 + 3]
+                    });
+                }
+
+                solutionBuffer.destroy();
+                segmentBuffer.destroy();
+                countBuffer.destroy();
+
+                return { lines, skippedJoining: segmentCount >= maxSegments };
+            }
+
+            async runEikonalJFA(grayscaleData, width, height, threshold, progressCallback) {
+                const pixelCount = width * height;
+
+                // Create buffers
+                const grayscaleBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
+                const seedsBufferA = this.createBuffer(pixelCount * 8, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
+                const seedsBufferB = this.createBuffer(pixelCount * 8, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
+                const distanceBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC);
+                const paramsBuffer = this.createBuffer(16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
+
+                // Upload grayscale data
+                this.device.queue.writeBuffer(grayscaleBuffer, 0, grayscaleData);
+
+                // JFA Initialization Shader - mark seed pixels
+                const initShaderCode = `
+                    @group(0) @binding(0) var<storage, read> grayscale: array<f32>;
+                    @group(0) @binding(1) var<storage, read_write> seeds: array<vec2<i32>>;
+                    @group(0) @binding(2) var<uniform> params: vec4<u32>;
+
+                    @compute @workgroup_size(256)
+                    fn init_seeds(@builtin(global_invocation_id) id: vec3<u32>) {
+                        let idx = id.x;
+                        let width = params.x;
+                        let height = params.y;
+                        let pixelCount = width * height;
+
+                        if (idx >= pixelCount) { return; }
+
+                        let threshold = bitcast<f32>(params.z);
+                        let value = grayscale[idx];
+
+                        if (value < threshold) {
+                            let x = i32(idx % width);
+                            let y = i32(idx / width);
+                            seeds[idx] = vec2<i32>(x, y);
+                        } else {
+                            seeds[idx] = vec2<i32>(-1, -1);
+                        }
+                    }
+                `;
+
+                // JFA Step Shader - propagate nearest seeds
+                const jfaShaderCode = `
+                    @group(0) @binding(0) var<storage, read> seeds_in: array<vec2<i32>>;
+                    @group(0) @binding(1) var<storage, read_write> seeds_out: array<vec2<i32>>;
+                    @group(0) @binding(2) var<uniform> params: vec4<u32>;
+
+                    fn distance_sq(a: vec2<i32>, b: vec2<i32>) -> f32 {
+                        let dx = f32(a.x - b.x);
+                        let dy = f32(a.y - b.y);
+                        return dx * dx + dy * dy;
+                    }
+
+                    @compute @workgroup_size(16, 16)
+                    fn jfa_step(@builtin(global_invocation_id) id: vec3<u32>) {
+                        let x = i32(id.x);
+                        let y = i32(id.y);
+                        let w = i32(params.x);
+                        let h = i32(params.y);
+                        let step_size = i32(params.z);
+
+                        if (x >= w || y >= h) { return; }
+
+                        let idx = u32(y * w + x);
+                        let current_pos = vec2<i32>(x, y);
+                        var best_seed = seeds_in[idx];
+                        var best_dist = 1e10f;
+
+                        if (best_seed.x >= 0) {
+                            best_dist = distance_sq(current_pos, best_seed);
+                        }
+
+                        // Check 9 neighbors at step distance (including self)
+                        for (var dy = -1; dy <= 1; dy++) {
+                            for (var dx = -1; dx <= 1; dx++) {
+                                let nx = x + dx * step_size;
+                                let ny = y + dy * step_size;
+
+                                if (nx < 0 || nx >= w || ny < 0 || ny >= h) { continue; }
+
+                                let neighbor_idx = u32(ny * w + nx);
+                                let neighbor_seed = seeds_in[neighbor_idx];
+
+                                if (neighbor_seed.x >= 0) {
+                                    let dist = distance_sq(current_pos, neighbor_seed);
+                                    if (dist < best_dist) {
+                                        best_dist = dist;
+                                        best_seed = neighbor_seed;
+                                    }
+                                }
+                            }
+                        }
+
+                        seeds_out[idx] = best_seed;
+                    }
+                `;
+
+                // Distance computation shader
+                const distanceShaderCode = `
+                    @group(0) @binding(0) var<storage, read> seeds: array<vec2<i32>>;
+                    @group(0) @binding(1) var<storage, read_write> distance_field: array<f32>;
+                    @group(0) @binding(2) var<uniform> params: vec4<u32>;
+
+                    @compute @workgroup_size(256)
+                    fn compute_distance(@builtin(global_invocation_id) id: vec3<u32>) {
+                        let idx = id.x;
+                        let width = params.x;
+                        let height = params.y;
+                        let pixelCount = width * height;
+
+                        if (idx >= pixelCount) { return; }
+
+                        let x = i32(idx % width);
+                        let y = i32(idx / width);
+                        let seed = seeds[idx];
+
+                        if (seed.x < 0) {
+                            distance_field[idx] = 999999.0;
+                        } else {
+                            let dx = f32(x - seed.x);
+                            let dy = f32(y - seed.y);
+                            distance_field[idx] = sqrt(dx * dx + dy * dy);
+                        }
+                    }
+                `;
+
+                // Create pipelines
+                const initPipeline = this.createComputePipeline(initShaderCode, 'init_seeds');
+                const jfaPipeline = this.createComputePipeline(jfaShaderCode, 'jfa_step');
+                const distancePipeline = this.createComputePipeline(distanceShaderCode, 'compute_distance');
+
+                // Step 1: Initialize seeds
+                const initParams = new Uint32Array([width, height, new Float32Array([threshold]).buffer ? 0 : 0, 0]);
+                const initParamsView = new DataView(initParams.buffer);
+                initParamsView.setUint32(0, width, true);
+                initParamsView.setUint32(4, height, true);
+                initParamsView.setFloat32(8, threshold, true);
+                initParamsView.setUint32(12, 0, true);
+                this.device.queue.writeBuffer(paramsBuffer, 0, initParams);
+
+                const initBindGroup = this.device.createBindGroup({
+                    layout: initPipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: grayscaleBuffer } },
+                        { binding: 1, resource: { buffer: seedsBufferA } },
+                        { binding: 2, resource: { buffer: paramsBuffer } }
+                    ]
+                });
+
+                let commandEncoder = this.device.createCommandEncoder();
+                let passEncoder = commandEncoder.beginComputePass();
+                passEncoder.setPipeline(initPipeline);
+                passEncoder.setBindGroup(0, initBindGroup);
+                passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
+                passEncoder.end();
+                this.device.queue.submit([commandEncoder.finish()]);
+
+                // Step 2: JFA passes (ping-pong between buffers)
+                const maxDim = Math.max(width, height);
+                let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
+                let readBuffer = seedsBufferA;
+                let writeBuffer = seedsBufferB;
+                let passCount = 0;
+                const totalPasses = Math.ceil(Math.log2(maxDim));
+
+                // Batch all JFA passes into a single command submission for max performance
+                while (stepSize >= 1) {
+                    // Update params with step size
+                    const jfaParams = new Uint32Array([width, height, stepSize, 0]);
+                    this.device.queue.writeBuffer(paramsBuffer, 0, jfaParams);
+
+                    const jfaBindGroup = this.device.createBindGroup({
+                        layout: jfaPipeline.getBindGroupLayout(0),
+                        entries: [
+                            { binding: 0, resource: { buffer: readBuffer } },
+                            { binding: 1, resource: { buffer: writeBuffer } },
+                            { binding: 2, resource: { buffer: paramsBuffer } }
+                        ]
+                    });
+
+                    commandEncoder = this.device.createCommandEncoder();
+                    passEncoder = commandEncoder.beginComputePass();
+                    passEncoder.setPipeline(jfaPipeline);
+                    passEncoder.setBindGroup(0, jfaBindGroup);
+                    passEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
+                    passEncoder.end();
+                    this.device.queue.submit([commandEncoder.finish()]);
+
+                    // NO sync here - let GPU queue all passes!
+
+                    // Swap buffers
+                    [readBuffer, writeBuffer] = [writeBuffer, readBuffer];
+                    stepSize = Math.floor(stepSize / 2);
+                    passCount++;
+                }
+
+                // Single progress update after all JFA passes complete
+                if (progressCallback) {
+                    progressCallback(1.0);
+                }
+
+                // Step 3: Compute final distance field
+                const distParams = new Uint32Array([width, height, 0, 0]);
+                this.device.queue.writeBuffer(paramsBuffer, 0, distParams);
+
+                const distanceBindGroup = this.device.createBindGroup({
+                    layout: distancePipeline.getBindGroupLayout(0),
+                    entries: [
+                        { binding: 0, resource: { buffer: readBuffer } },
+                        { binding: 1, resource: { buffer: distanceBuffer } },
+                        { binding: 2, resource: { buffer: paramsBuffer } }
+                    ]
+                });
+
+                commandEncoder = this.device.createCommandEncoder();
+                passEncoder = commandEncoder.beginComputePass();
+                passEncoder.setPipeline(distancePipeline);
+                passEncoder.setBindGroup(0, distanceBindGroup);
+                passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
+                passEncoder.end();
+                this.device.queue.submit([commandEncoder.finish()]);
+
+                // Read back results
+                const result = await this.readBuffer(distanceBuffer, pixelCount * 4);
+
+                // Cleanup
+                grayscaleBuffer.destroy();
+                seedsBufferA.destroy();
+                seedsBufferB.destroy();
+                distanceBuffer.destroy();
+                paramsBuffer.destroy();
+
+                return result;
+            }
+        }
+
+        const webGPUManager = new WebGPUManager();
+
+        // Live Preview Manager - handles real-time visualization during processing
+        class LivePreviewManager {
+            constructor(canvas, ctx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.enabled = true;
+                this.throttleMs = 200; // Max 5 updates per second (reduced from 10 for better performance)
+                this.lastUpdate = 0;
+                this.previewImageData = null;
+            }
+
+            setEnabled(enabled) {
+                this.enabled = enabled;
+            }
+
+            shouldUpdate() {
+                if (!this.enabled) return false;
+                const now = performance.now();
+                if (now - this.lastUpdate < this.throttleMs) return false;
+                this.lastUpdate = now;
+                return true;
+            }
+
+            // Render distance field as heatmap during Eikonal solving
+            renderDistanceField(distanceData, width, height) {
+                if (!this.shouldUpdate()) return;
+
+                // Find min/max for normalization
+                let minVal = Infinity, maxVal = -Infinity;
+                for (let i = 0; i < distanceData.length; i++) {
+                    const val = distanceData[i];
+                    if (val < 999999) {
+                        if (val < minVal) minVal = val;
+                        if (val > maxVal) maxVal = val;
+                    }
+                }
+
+                if (minVal === Infinity) {
+                    minVal = 0;
+                    maxVal = 1;
+                }
+                const range = maxVal - minVal || 1;
+
+                // Create or reuse ImageData
+                if (!this.previewImageData || this.previewImageData.width !== width || this.previewImageData.height !== height) {
+                    this.previewImageData = this.ctx.createImageData(width, height);
+                }
+                const imgData = this.previewImageData;
+
+                // Render heatmap (blue = near, red = far)
+                for (let i = 0; i < distanceData.length; i++) {
+                    const val = distanceData[i];
+                    if (val >= 999999) {
+                        // Unreached pixels - dark gray
+                        imgData.data[i * 4] = 40;
+                        imgData.data[i * 4 + 1] = 40;
+                        imgData.data[i * 4 + 2] = 40;
+                    } else {
+                        const t = (val - minVal) / range;
+                        // Blue to cyan to green to yellow to red
+                        if (t < 0.25) {
+                            const s = t / 0.25;
+                            imgData.data[i * 4] = 0;
+                            imgData.data[i * 4 + 1] = Math.floor(s * 255);
+                            imgData.data[i * 4 + 2] = 255;
+                        } else if (t < 0.5) {
+                            const s = (t - 0.25) / 0.25;
+                            imgData.data[i * 4] = 0;
+                            imgData.data[i * 4 + 1] = 255;
+                            imgData.data[i * 4 + 2] = Math.floor((1 - s) * 255);
+                        } else if (t < 0.75) {
+                            const s = (t - 0.5) / 0.25;
+                            imgData.data[i * 4] = Math.floor(s * 255);
+                            imgData.data[i * 4 + 1] = 255;
+                            imgData.data[i * 4 + 2] = 0;
+                        } else {
+                            const s = (t - 0.75) / 0.25;
+                            imgData.data[i * 4] = 255;
+                            imgData.data[i * 4 + 1] = Math.floor((1 - s) * 255);
+                            imgData.data[i * 4 + 2] = 0;
+                        }
+                    }
+                    imgData.data[i * 4 + 3] = 255;
+                }
+
+                this.ctx.putImageData(imgData, 0, 0);
+            }
+
+            // Render contours incrementally as they're extracted
+            renderContours(contours, width, height, lineColor, lineWidth, clear = true) {
+                if (!this.shouldUpdate()) return;
+
+                if (clear) {
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillRect(0, 0, width, height);
+                }
+
+                this.ctx.strokeStyle = lineColor;
+                this.ctx.lineWidth = lineWidth;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                this.ctx.beginPath();
+
+                for (const path of contours) {
+                    if (path.length < 2) continue;
+                    this.ctx.moveTo(path[0].x, path[0].y);
+                    for (let i = 1; i < path.length; i++) {
+                        this.ctx.lineTo(path[i].x, path[i].y);
+                    }
+                }
+                this.ctx.stroke();
+            }
+
+            // Render raw line segments (for contour extraction phase)
+            renderRawSegments(segments, width, height, lineColor, lineWidth, clear = true) {
+                if (!this.shouldUpdate()) return;
+
+                if (clear) {
+                    this.ctx.fillStyle = '#ffffff';
+                    this.ctx.fillRect(0, 0, width, height);
+                }
+                this.ctx.strokeStyle = lineColor;
+                this.ctx.lineWidth = lineWidth * 0.5;
+                this.ctx.beginPath();
+
+                for (const seg of segments) {
+                    this.ctx.moveTo(seg.x1, seg.y1);
+                    this.ctx.lineTo(seg.x2, seg.y2);
+                }
+                this.ctx.stroke();
+            }
+        }
+
+        class SelectionManager {
+            constructor(overlay, box, canvas) {
+                this.overlay = overlay;
+                this.box = box;
+                this.canvas = canvas;
+                this.isSelecting = false;
+                this.startX = 0;
+                this.startY = 0;
+                this.selection = null; // {x, y, w, h} (Image coordinates)
+                this.enabled = false;
+
+                this.onMouseDown = this.onMouseDown.bind(this);
+                this.onMouseMove = this.onMouseMove.bind(this);
+                this.onMouseUp = this.onMouseUp.bind(this);
+
+                this.overlay.addEventListener('mousedown', this.onMouseDown);
+                this.overlay.addEventListener('mousemove', this.onMouseMove);
+                this.overlay.addEventListener('mouseup', this.onMouseUp);
+            }
+
+            enable() {
+                this.enabled = true;
+                this.overlay.classList.add('active');
+                this.overlay.style.display = 'block';
+            }
+
+            disable() {
+                this.enabled = false;
+                this.overlay.classList.remove('active');
+                this.overlay.style.display = 'none';
+                this.clear();
+            }
+
+            clear() {
+                this.selection = null;
+                this.box.style.display = 'none';
+                document.getElementById('rerunBtn').style.display = 'none';
+            }
+
+            onMouseDown(e) {
+                if (!this.enabled) return;
+                
+                // Get canvas bounds
+                const canvasRect = this.canvas.getBoundingClientRect();
+                
+                // Check if click is inside canvas
+                if (e.clientX < canvasRect.left || e.clientX > canvasRect.right ||
+                    e.clientY < canvasRect.top || e.clientY > canvasRect.bottom) {
+                    return;
+                }
+
+                this.isSelecting = true;
+                
+                // Coordinates relative to overlay (which is on top of everything)
+                const overlayRect = this.overlay.getBoundingClientRect();
+                this.startX = e.clientX - overlayRect.left;
+                this.startY = e.clientY - overlayRect.top;
+                
+                this.box.style.left = this.startX + 'px';
+                this.box.style.top = this.startY + 'px';
+                this.box.style.width = '0px';
+                this.box.style.height = '0px';
+                this.box.style.display = 'block';
+            }
+
+            onMouseMove(e) {
+                if (!this.isSelecting) return;
+                const overlayRect = this.overlay.getBoundingClientRect();
+                const currentX = e.clientX - overlayRect.left;
+                const currentY = e.clientY - overlayRect.top;
+
+                const x = Math.min(this.startX, currentX);
+                const y = Math.min(this.startY, currentY);
+                const w = Math.abs(currentX - this.startX);
+                const h = Math.abs(currentY - this.startY);
+
+                this.box.style.left = x + 'px';
+                this.box.style.top = y + 'px';
+                this.box.style.width = w + 'px';
+                this.box.style.height = h + 'px';
+            }
+
+            onMouseUp(e) {
+                if (!this.isSelecting) return;
+                this.isSelecting = false;
+                
+                const w = parseFloat(this.box.style.width);
+                const h = parseFloat(this.box.style.height);
+                
+                if (w < 5 || h < 5) {
+                    this.clear();
+                    return;
+                }
+
+                // Convert to image coordinates
+                const overlayRect = this.overlay.getBoundingClientRect();
+                const canvasRect = this.canvas.getBoundingClientRect();
+                
+                // Box coordinates relative to overlay
+                const boxX = parseFloat(this.box.style.left);
+                const boxY = parseFloat(this.box.style.top);
+                
+                // Box coordinates relative to canvas
+                const relX = boxX - (canvasRect.left - overlayRect.left);
+                const relY = boxY - (canvasRect.top - overlayRect.top);
+                
+                // Scale factors
+                const scaleX = this.canvas.width / canvasRect.width;
+                const scaleY = this.canvas.height / canvasRect.height;
+                
+                this.selection = {
+                    x: Math.max(0, relX * scaleX),
+                    y: Math.max(0, relY * scaleY),
+                    w: w * scaleX,
+                    h: h * scaleY
+                };
+
+                // Clamp to image size
+                if (this.selection.x + this.selection.w > this.canvas.width) {
+                    this.selection.w = this.canvas.width - this.selection.x;
+                }
+                if (this.selection.y + this.selection.h > this.canvas.height) {
+                    this.selection.h = this.canvas.height - this.selection.y;
+                }
+
+                console.log('Selection (Image Coords):', this.selection);
+                document.getElementById('rerunBtn').style.display = 'block';
+            }
+        }
+
+        class MarchingWaves {
+            constructor() {
+                this.canvas = document.getElementById('outputCanvas');
+                this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+                this.imageData = null;
+                this.grayData = null;
+                this.solution = null;
+                this.contours = [];
+                this.rawContours = [];
+                this.originPoints = [];
+                this.perf = {};
+                this.debugMode = false;
+                this.vizMode = 'final';
+                this.showOrigins = true;
+                this.showGrid = false;
+                this.isCancelled = false;
+                this.progressCallback = null;
+                this.livePreviewManager = new LivePreviewManager(this.canvas, this.ctx);
+                this.useGPU = true;
+                this.livePreviewEnabled = true;
+                this.isPaused = false;
+                this.pauseResolve = null;
+            }
+
+            setProgressCallback(cb) {
+                this.progressCallback = cb;
+            }
+
+            pause() {
+                if (!this.isPaused) {
+                    this.isPaused = true;
+                    this.updateProgress(true, null, 'Paused');
+                }
+            }
+
+            resume() {
+                if (this.isPaused) {
+                    this.isPaused = false;
+                    if (this.pauseResolve) {
+                        this.pauseResolve();
+                        this.pauseResolve = null;
+                    }
+                }
+            }
+
+            async checkPause() {
+                if (this.isPaused) {
+                    await new Promise(resolve => {
+                        this.pauseResolve = resolve;
+                    });
+                    this.updateProgress(true, null, 'Resuming...');
+                }
+            }
+
+            cancel() {
+                this.isCancelled = true;
+            }
+
+            reset() {
+                this.isCancelled = false;
+            }
+
+            async processImage(img, options) {
+                this.reset();
+                const { interval, lineWidth, invert, lineColor, antiAlias, maxSegments, skipJoining, showProgress } = options;
+                this.debugMode = options.debugMode || false;
+                this.vizMode = options.vizMode || 'final';
+                this.showOrigins = options.showOrigins !== false;
+                this.showGrid = options.showGrid || false;
+                this.livePreviewEnabled = options.livePreview !== false;
+                this.useGPU = options.useGPU !== false;
+                this.livePreviewManager.setEnabled(this.livePreviewEnabled);
+
+                const t0 = performance.now();
+                const width = img.width;
+                const height = img.height;
+
+                this.canvas.width = width;
+                this.canvas.height = height;
+
+                this.ctx.drawImage(img, 0, 0);
+                this.imageData = this.ctx.getImageData(0, 0, width, height);
+                
+                const t1 = performance.now();
+                let gpuUsed = { grayscale: false, eikonal: false, contours: false };
+
+                // Use GPU if available AND user has enabled it
+                const canUseGPU = this.useGPU && webGPUManager.available;
+                if (canUseGPU) {
+                    try {
+                        this.grayData = await webGPUManager.runGrayscaleConversion(this.imageData, width, height);
+                        gpuUsed.grayscale = true;
+                    } catch (error) {
+                        console.warn('GPU grayscale conversion failed, falling back to CPU:', error);
+                        this.grayData = this.toGrayscale(this.imageData);
+                    }
+                } else {
+                    this.grayData = this.toGrayscale(this.imageData);
+                }
+                const t2 = performance.now();
+
+                if (this.isCancelled) throw new Error('Cancelled by user');
+                this.updateProgress(showProgress, 15, 'Converting to grayscale...');
+
+                if (invert) {
+                    this.invertGrayscale();
+                }
+
+                this.originPoints = [];
+                const threshold = options.threshold / 100;
+                for (let i = 0; i < this.grayData.length; i++) {
+                    if (this.grayData[i] < threshold) {
+                        const x = i % width;
+                        const y = Math.floor(i / width);
+                        this.originPoints.push({ x, y });
+                    }
+                }
+
+                if (this.isCancelled) throw new Error('Cancelled by user');
+                this.updateProgress(showProgress, 30, 'Solving Eikonal equation...');
+
+                // Show canvas during processing if live preview enabled
+                if (this.livePreviewEnabled) {
+                    document.getElementById('dropPreview').style.display = 'none';
+                    document.getElementById('canvasContainer').style.display = 'block';
+                }
+
+                const t3 = performance.now();
+                gpuUsed.eikonal = await this.solveEikonalAsync(width, height, threshold, showProgress, options.lineColor);
+                const t4 = performance.now();
+
+                if (this.isCancelled) throw new Error('Cancelled by user');
+                this.updateProgress(showProgress, 60, options.mode === 'streamlines' ? 'Tracing streamlines...' : 'Extracting contours...');
+
+                const t5 = performance.now();
+
+                let contourData;
+                if (options.mode === 'streamlines') {
+                    contourData = await this.extractStreamlines(width, height, options);
+                } else if (options.mode === 'stipple') {
+                    contourData = await this.extractStipple(width, height, options);
+                } else if (options.mode === 'tsp') {
+                    contourData = await this.extractTSP(width, height, options);
+                } else {
+                    // Extract new adaptive contour parameters from options
+                    const contourOptions = {
+                        adaptiveContours: options.adaptiveContours !== false,
+                        edgeGuidance: options.edgeGuidance !== false,
+                        edgeSensitivity: options.edgeSensitivity ?? 0.7,
+                        detailLevel: options.detailLevel ?? 0.8,
+                        contourSmoothness: options.contourSmoothness ?? 0.5,
+                        featureImportance: options.featureImportance ?? 0.6,
+                        mode: options.mode,
+                        threshold: options.threshold
+                    };
+                    contourData = await this.extractContours(width, height, interval, maxSegments, skipJoining, showProgress, gpuUsed, lineColor, lineWidth, contourOptions);
+                }
+
+                this.contours = contourData.contours;
+                this.rawContours = contourData.raw;
+                const t6 = performance.now();
+                 
+                 console.log('Origin points:', this.originPoints.length);
+                 let minVal = Infinity;
+                 let maxVal = -Infinity;
+                 for (let i = 0; i < this.solution.length; i++) {
+                     if (this.solution[i] < Infinity) {
+                         if (this.solution[i] < minVal) minVal = this.solution[i];
+                         if (this.solution[i] > maxVal) maxVal = this.solution[i];
+                     }
+                 }
+                 console.log('Solution range:', minVal === Infinity ? 'N/A' : minVal, maxVal === -Infinity ? 'N/A' : maxVal);
+                 console.log('Contours generated:', this.contours.length);
+
+                this.perf = {
+                    'Total': (t6 - t0).toFixed(1),
+                    'Grayscale': `${(t2 - t1).toFixed(1)}ms (${gpuUsed.grayscale ? 'GPU' : 'CPU'})`,
+                    'Eikonal': `${(t4 - t3).toFixed(1)}ms (${gpuUsed.eikonal ? 'GPU JFA' : 'CPU FMM'})`,
+                    'Contours': `${(t6 - t5).toFixed(1)}ms (CPU)`,
+                    'Width': width,
+                    'Height': height,
+                    'Origins': this.originPoints.length,
+                    'Contour Lines': this.rawContours.reduce((sum, c) => sum + c.lines.length, 0),
+                    'Joined Paths': this.contours.length,
+                    'Optimization': contourData.skippedJoining ? 'Skipped (too many segments)' : 'Normal'
+                };
+
+                if (this.isCancelled) throw new Error('Cancelled by user');
+                this.updateProgress(showProgress, 90, 'Rendering...');
+                
+                if (this.debugMode && this.vizMode !== 'final') {
+                    await new Promise(r => setTimeout(r, 10));
+                    this.renderDebugVisualization(width, height, lineColor, lineWidth);
+                    this.updateProgress(showProgress, 100, 'Complete!');
+                    // Return minimal SVG indicating debug mode (not meant for export)
+                    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" fill="white"/>
+  <text x="${width/2}" y="${height/2}" text-anchor="middle" fill="black" font-size="16">Debug Mode: ${this.vizMode}</text>
+</svg>`;
+                }
+
+                 this.ctx.fillStyle = '#ffffff';
+                 this.ctx.fillRect(0, 0, width, height);
+ 
+                 this.ctx.strokeStyle = lineColor;
+                 this.ctx.lineWidth = lineWidth;
+                 this.ctx.lineCap = 'round';
+                 this.ctx.lineJoin = 'round';
+ 
+                 if (this.contours.length === 0) {
+                     console.warn('No contours to draw - check threshold and inversion settings');
+                     this.ctx.fillStyle = '#000000';
+                     this.ctx.font = '16px Arial';
+                     this.ctx.textAlign = 'center';
+                     this.ctx.fillText('No contours found', width / 2, height / 2);
+                     this.ctx.fillText('Try adjusting threshold or inverting colors', width / 2, height / 2 + 24);
+                 } else {
+                     this.drawContours();
+                 }
+
+                await new Promise(r => setTimeout(r, 10));
+                this.updateProgress(showProgress, 100, 'Complete!');
+                 
+                return this.getSVG(width, height, lineColor, lineWidth, antiAlias);
+            }
+
+            updateProgress(show, percent, text) {
+                if (this.progressCallback) {
+                    this.progressCallback(show, percent, text);
+                }
+            }
+
+            toGrayscale(imageData) {
+                const gray = new Float32Array(imageData.width * imageData.height);
+                const data = imageData.data;
+
+                for (let i = 0; i < gray.length; i++) {
+                    gray[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+                }
+
+                return gray;
+            }
+
+            invertGrayscale() {
+                for (let i = 0; i < this.grayData.length; i++) {
+                    this.grayData[i] = 1 - this.grayData[i];
+                }
+            }
+
+            // Async Eikonal solver with GPU (JFA) and CPU (FMM) fallback
+            async solveEikonalAsync(width, height, threshold, showProgress, lineColor) {
+                const self = this;
+
+                // Try GPU first if enabled and available
+                if (this.useGPU && webGPUManager.available) {
+                    try {
+                        // Simplified progress callback - just update text, no delays
+                        const progressCallback = showProgress ? (progress) => {
+                            self.updateProgress(showProgress, 30 + progress * 25, 'Solving Eikonal (GPU)...');
+                        } : null;
+
+                        // Run GPU JFA
+                        this.solution = await webGPUManager.runEikonalJFA(
+                            this.grayData, width, height, threshold, progressCallback
+                        );
+
+                        // Show final distance field preview (no pause - will be replaced by contours anyway)
+                        if (this.livePreviewEnabled) {
+                            this.livePreviewManager.renderDistanceField(this.solution, width, height);
+                        }
+
+                        console.log('Eikonal solved using GPU (JFA)');
+                        return true; // GPU was used
+                    } catch (error) {
+                        console.warn('GPU Eikonal failed, falling back to CPU:', error);
+                    }
+                }
+
+                // CPU fallback
+                this.solveEikonalCPU(width, height, threshold);
+
+                // Show distance field preview for CPU as well (no pause)
+                if (this.livePreviewEnabled) {
+                    this.livePreviewManager.renderDistanceField(this.solution, width, height);
+                }
+
+                return false; // CPU was used
+            }
+
+            // CPU-based Fast Marching Method solver
+            solveEikonalCPU(width, height, threshold) {
+                const f = this.grayData;
+                const size = width * height;
+                this.solution = new Float32Array(size);
+                this.solution.fill(Infinity);
+
+                const visited = new Uint8Array(size);
+                const heap = [];
+
+                const idx = (x, y) => y * width + x;
+
+                const safeGet = (x, y) => {
+                    if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+                    const val = this.solution[idx(x, y)];
+                    return (val === undefined || isNaN(val) || !isFinite(val)) ? Infinity : val;
+                };
+
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = idx(x, y);
+                        if (f[i] < threshold) {
+                            this.solution[i] = 0;
+                            visited[i] = 1;
+                            heap.push({ x, y, value: 0 });
+                        }
+                    }
+                }
+
+                const heapPush = (item) => {
+                    heap.push(item);
+                    let i = heap.length - 1;
+                    while (i > 0) {
+                        const parent = Math.floor((i - 1) / 2);
+                        if (heap[parent].value <= heap[i].value) break;
+                        [heap[parent], heap[i]] = [heap[i], heap[parent]];
+                        i = parent;
+                    }
+                };
+
+                const heapPop = () => {
+                    if (heap.length === 0) return null;
+                    const result = heap[0];
+                    const last = heap.pop();
+                    if (heap.length > 0) {
+                        heap[0] = last;
+                        let i = 0;
+                        while (true) {
+                            const left = 2 * i + 1;
+                            const right = 2 * i + 2;
+                            let smallest = i;
+                            if (left < heap.length && heap[left].value < heap[smallest].value) {
+                                smallest = left;
+                            }
+                            if (right < heap.length && heap[right].value < heap[smallest].value) {
+                                smallest = right;
+                            }
+                            if (smallest === i) break;
+                            [heap[i], heap[smallest]] = [heap[smallest], heap[i]];
+                            i = smallest;
+                        }
+                    }
+                    return result;
+                };
+
+                while (heap.length > 0) {
+                    const current = heapPop();
+                    if (!current) break;
+                    const { x, y } = current;
+                    const currentIdx = idx(x, y);
+                    visited[currentIdx] = 1;
+
+                    const neighbors = [
+                        { x: x - 1, y },
+                        { x: x + 1, y },
+                        { x, y: y - 1 },
+                        { x, y: y + 1 }
+                    ];
+
+                    for (const neighbor of neighbors) {
+                        if (neighbor.x < 0 || neighbor.x >= width || neighbor.y < 0 || neighbor.y >= height) continue;
+                        
+                        const nIdx = idx(neighbor.x, neighbor.y);
+                        if (visited[nIdx]) continue;
+
+                        const ux = safeGet(x - 1, y);
+                        const uy = safeGet(x, y - 1);
+                        const ux_next = safeGet(x + 1, y);
+                        const uy_next = safeGet(x, y + 1);
+
+                        const neighborsX = [];
+                        const neighborsY = [];
+                        
+                        if (ux < Infinity) neighborsX.push(ux);
+                        if (ux_next < Infinity) neighborsX.push(ux_next);
+                        if (uy < Infinity) neighborsY.push(uy);
+                        if (uy_next < Infinity) neighborsY.push(uy_next);
+
+                        let minX = neighborsX.length > 0 ? Math.min(...neighborsX) : Infinity;
+                        let minY = neighborsY.length > 0 ? Math.min(...neighborsY) : Infinity;
+
+                        let newValue;
+                        const fVal = f[nIdx];
+                        
+                        if (minX === Infinity && minY === Infinity) {
+                            continue;
+                        } else if (minX === Infinity) {
+                            newValue = minY + fVal;
+                        } else if (minY === Infinity) {
+                            newValue = minX + fVal;
+                        } else {
+                            const min = Math.min(minX, minY);
+                            const other = Math.max(minX, minY);
+                            if (other - min >= fVal) {
+                                newValue = min + fVal;
+                            } else {
+                                const discriminant = 2 * fVal * fVal - (other - min) * (other - min);
+                                if (discriminant < 0) {
+                                    newValue = min + fVal;
+                                } else {
+                                    newValue = (min + other + Math.sqrt(discriminant)) / 2;
+                                }
+                            }
+                        }
+
+                        if (newValue < this.solution[nIdx]) {
+                            this.solution[nIdx] = newValue;
+                            heapPush({ x: neighbor.x, y: neighbor.y, value: newValue });
+                        }
+                    }
+                }
+            }
+
+            async extractContours(width, height, interval, maxSegments, skipJoining, showProgress, gpuUsed = {}, lineColor = '#000000', lineWidth = 1, options = {}) {
+                // Use the new adaptive contour extraction algorithm
+                return this.extractContoursAdaptive(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, options);
+            }
+
+            async extractStreamlines(width, height, options) {
+                const {
+                    interval = 8,
+                    maxSegments = 50000,
+                    lineColor = '#000000',
+                    lineWidth = 1,
+                    showProgress = true,
+                    edgeSensitivity = 0.5
+                } = options;
+
+                const tStart = performance.now();
+                
+                // 1. Prepare Gradient Field
+                const { gradX, gradY, gradMag } = this.computeDistanceFieldGradient(this.solution, width, height);
+                
+                // 2. Seed points based on image density/threshold
+                const seeds = [];
+                const threshold = (options.threshold || 50) / 100;
+                
+                // Use a jittered grid for seeding to get better coverage than random
+                const seedSpacing = interval;
+                for (let y = seedSpacing; y < height - seedSpacing; y += seedSpacing) {
+                    for (let x = seedSpacing; x < width - seedSpacing; x += seedSpacing) {
+                        const idx = Math.floor(y) * width + Math.floor(x);
+                        if (this.grayData[idx] < threshold) {
+                            // Add some jitter
+                            seeds.push({
+                                x: x + (Math.random() - 0.5) * seedSpacing * 0.5,
+                                y: y + (Math.random() - 0.5) * seedSpacing * 0.5
+                            });
+                        }
+                    }
+                }
+
+                // Shuffle seeds to avoid directional bias in collision detection
+                for (let i = seeds.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [seeds[i], seeds[j]] = [seeds[j], seeds[i]];
+                }
+
+                const paths = [];
+                const stepSize = 2.0;
+                const maxPathPoints = 500;
+                const minPathLength = 10;
+                const separation = interval * 0.8; // Minimum distance between paths
+                
+                // Occupational grid for fast collision detection
+                const occGridSize = Math.max(4, Math.floor(separation));
+                const occWidth = Math.ceil(width / occGridSize);
+                const occHeight = Math.ceil(height / occGridSize);
+                const occGrid = new Uint8Array(occWidth * occHeight);
+
+                const isOccupied = (x, y) => {
+                    const gx = Math.floor(x / occGridSize);
+                    const gy = Math.floor(y / occGridSize);
+                    if (gx < 0 || gx >= occWidth || gy < 0 || gy >= occHeight) return true;
+                    return occGrid[gy * occWidth + gx] === 1;
+                };
+
+                const markOccupied = (x, y) => {
+                    const gx = Math.floor(x / occGridSize);
+                    const gy = Math.floor(y / occGridSize);
+                    if (gx >= 0 && gx < occWidth && gy >= 0 && gy < occHeight) {
+                        occGrid[gy * occWidth + gx] = 1;
+                    }
+                };
+
+                // 3. Trace Streamlines
+                for (let i = 0; i < seeds.length; i++) {
+                    if (i % 500 === 0) {
+                        this.updateProgress(showProgress, 60 + (i / seeds.length) * 30, `Tracing streamlines (${i}/${seeds.length})...`);
+                        await this.checkPause();
+                        if (this.isCancelled) throw new Error('Cancelled by user');
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+
+                    const seed = seeds[i];
+                    if (isOccupied(seed.x, seed.y)) continue;
+
+                    const path = [seed];
+                    markOccupied(seed.x, seed.y);
+
+                    // Trace in both directions
+                    for (const direction of [1, -1]) {
+                        let cx = seed.x;
+                        let cy = seed.y;
+
+                        for (let step = 0; step < maxPathPoints; step++) {
+                            const ix = Math.floor(cx);
+                            const iy = Math.floor(cy);
+                            if (ix < 1 || ix >= width - 1 || iy < 1 || iy >= height - 1) break;
+
+                            const idx = iy * width + ix;
+                            
+                            // RK2 Integration (Midpoint Method)
+                            const getGrad = (x, y) => {
+                                const gx = Math.floor(x);
+                                const gy = Math.floor(y);
+                                if (gx < 1 || gx >= width - 1 || gy < 1 || gy >= height - 1) return null;
+                                const i = gy * width + gx;
+                                return { x: gradX[i], y: gradY[i] };
+                            };
+
+                            const g1 = getGrad(cx, cy);
+                            if (!g1) break;
+                            
+                            const mag1 = Math.sqrt(g1.x * g1.x + g1.y * g1.y);
+                            if (mag1 < 0.001) break;
+                            
+                            const k1x = (g1.x / mag1) * stepSize * direction;
+                            const k1y = (g1.y / mag1) * stepSize * direction;
+                            
+                            const midX = cx + k1x * 0.5;
+                            const midY = cy + k1y * 0.5;
+                            
+                            const g2 = getGrad(midX, midY);
+                            if (!g2) break;
+                            
+                            const mag2 = Math.sqrt(g2.x * g2.x + g2.y * g2.y);
+                            if (mag2 < 0.001) break;
+                            
+                            const k2x = (g2.x / mag2) * stepSize * direction;
+                            const k2y = (g2.y / mag2) * stepSize * direction;
+
+                            const nx = cx + k2x;
+                            const ny = cy + k2y;
+
+                            if (isOccupied(nx, ny)) break;
+
+                            if (direction === 1) {
+                                path.push({ x: nx, y: ny });
+                            } else {
+                                path.unshift({ x: nx, y: ny });
+                            }
+
+                            markOccupied(nx, ny);
+                            cx = nx;
+                            cy = ny;
+                        }
+                    }
+
+                    if (path.length * stepSize >= minPathLength) {
+                        paths.push(path);
+                    }
+                }
+
+                const tEnd = performance.now();
+                console.log(`Streamline tracing took ${(tEnd - tStart).toFixed(1)}ms for ${paths.length} paths`);
+
+                // Post-process: Smoothing
+                const smoothedPaths = paths.map(p => this.smoothPath(p, options.contourSmoothness || 0.5));
+                
+                // Post-process: Optimization
+                this.updateProgress(showProgress, 95, 'Optimizing paths...');
+                const optimized = this.optimizePathOrder(smoothedPaths);
+
+                return { 
+                    contours: optimized, 
+                    raw: [], // We don't really have raw segments in this mode
+                    skippedJoining: false 
+                };
+            }
+
+            async extractStipple(width, height, options) {
+                const {
+                    interval = 8,
+                    showProgress = true,
+                    threshold = 0.5
+                } = options;
+
+                const tStart = performance.now();
+                const points = [];
+                const minRadius = 1.5; // Slightly tighter for better detail
+                const maxRadius = interval;
+                
+                // 1. Build a density mask to skip light areas early
+                const mask = new Uint8Array(width * height);
+                let activePixels = 0;
+                for (let i = 0; i < this.grayData.length; i++) {
+                    if (this.grayData[i] < threshold) {
+                        mask[i] = 1;
+                        activePixels++;
+                    }
+                }
+
+                if (activePixels === 0) return { contours: [], raw: [], skippedJoining: true };
+
+                // 2. Poisson Disk Sampling
+                const k = 20; // Reduced k for faster generation with minimal quality loss
+                const active = [];
+                const cellSize = maxRadius / Math.sqrt(2);
+                const gridWidth = Math.ceil(width / cellSize);
+                const gridHeight = Math.ceil(height / cellSize);
+                const grid = new Int32Array(gridWidth * gridHeight).fill(-1);
+
+                const getRadius = (x, y) => {
+                    const idx = Math.floor(y) * width + Math.floor(x);
+                    const val = this.grayData[idx];
+                    return minRadius + (val * (maxRadius - minRadius));
+                };
+
+                const insertPoint = (p) => {
+                    const idx = points.length;
+                    points.push(p);
+                    const gx = Math.floor(p.x / cellSize);
+                    const gy = Math.floor(p.y / cellSize);
+                    grid[gy * gridWidth + gx] = idx;
+                    active.push(idx);
+                };
+
+                // Seed with multiple points in dark areas for faster fill
+                const numSeeds = Math.min(10, Math.ceil(activePixels / 10000));
+                for (let s = 0; s < numSeeds; s++) {
+                    let seed = null;
+                    for (let i = 0; i < 50; i++) {
+                        const rx = Math.random() * width;
+                        const ry = Math.random() * height;
+                        if (mask[Math.floor(ry) * width + Math.floor(rx)]) {
+                            seed = { x: rx, y: ry };
+                            insertPoint(seed);
+                            break;
+                        }
+                    }
+                }
+                
+                if (points.length === 0) insertPoint({ x: width / 2, y: height / 2 });
+
+                while (active.length > 0) {
+                    const activeIdx = Math.floor(Math.random() * active.length);
+                    const pIdx = active[activeIdx];
+                    const p = points[pIdx];
+                    const r = getRadius(p.x, p.y);
+
+                    let found = false;
+                    for (let i = 0; i < k; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = r + Math.random() * r;
+                        const nx = p.x + Math.cos(angle) * dist;
+                        const ny = p.y + Math.sin(angle) * dist;
+
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            if (!mask[Math.floor(ny) * width + Math.floor(nx)]) continue;
+
+                            const nr = getRadius(nx, ny);
+                            const gx = Math.floor(nx / cellSize);
+                            const gy = Math.floor(ny / cellSize);
+                            let tooClose = false;
+                            
+                            const checkRange = Math.ceil(maxRadius / cellSize);
+                            for (let dy = -checkRange; dy <= checkRange; dy++) {
+                                for (let dx = -checkRange; dx <= checkRange; dx++) {
+                                    const ngx = gx + dx;
+                                    const ngy = gy + dy;
+                                    if (ngx >= 0 && ngx < gridWidth && ngy >= 0 && ngy < gridHeight) {
+                                        const neighborIdx = grid[ngy * gridWidth + ngx];
+                                        if (neighborIdx !== -1) {
+                                            const neighbor = points[neighborIdx];
+                                            const dSq = (nx - neighbor.x)**2 + (ny - neighbor.y)**2;
+                                            const minDist = (nr + getRadius(neighbor.x, neighbor.y)) / 2;
+                                            if (dSq < minDist * minDist) {
+                                                tooClose = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (tooClose) break;
+                            }
+
+                            if (!tooClose) {
+                                insertPoint({ x: nx, y: ny });
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!found) {
+                        active.splice(activeIdx, 1);
+                    }
+
+                    if (points.length % 2000 === 0 && showProgress) {
+                        this.updateProgress(showProgress, 60 + (points.length / 40000) * 30, `Stippling (${points.length} dots)...`);
+                        await this.checkPause();
+                        if (this.isCancelled) throw new Error('Cancelled by user');
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+                    if (points.length > 150000) break;
+                }
+
+                const dotPaths = points.map(p => [{ x: p.x, y: p.y }, { x: p.x + 0.1, y: p.y + 0.1 }]);
+                return { contours: dotPaths, raw: [], skippedJoining: true };
+            }
+
+            async extractTSP(width, height, options) {
+                const stippleResult = await this.extractStipple(width, height, { ...options, showProgress: true });
+                const points = stippleResult.contours.map(p => p[0]);
+                if (points.length < 2) return { contours: [], raw: [], skippedJoining: false };
+
+                this.updateProgress(true, 90, `Connecting ${points.length} points...`);
+                
+                // Optimized Nearest Neighbor with Spatial Grid
+                const orderedPoints = [];
+                const used = new Uint8Array(points.length);
+                const cellSize = 30;
+                const gridWidth = Math.ceil(width / cellSize);
+                const gridHeight = Math.ceil(height / cellSize);
+                const grid = Array(gridWidth * gridHeight).fill().map(() => []);
+                
+                for (let i = 0; i < points.length; i++) {
+                    const gx = Math.floor(points[i].x / cellSize);
+                    const gy = Math.floor(points[i].y / cellSize);
+                    grid[gy * gridWidth + gx].push(i);
+                }
+
+                let currentIdx = 0;
+                orderedPoints.push(points[currentIdx]);
+                used[currentIdx] = 1;
+                let remaining = points.length - 1;
+
+                while (remaining > 0) {
+                    if (remaining % 1000 === 0) {
+                        this.updateProgress(true, 90 + (1 - remaining / points.length) * 10, `TSP: ${remaining} left...`);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+
+                    const cp = points[currentIdx];
+                    let nearestIdx = -1;
+                    let minDistSq = Infinity;
+
+                    const gx = Math.floor(cp.x / cellSize);
+                    const gy = Math.floor(cp.y / cellSize);
+                    
+                    let searchRadius = 0;
+                    let found = false;
+
+                    while (!found && searchRadius < Math.max(gridWidth, gridHeight)) {
+                        for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+                            for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+                                if (Math.abs(dx) !== searchRadius && Math.abs(dy) !== searchRadius && searchRadius > 0) continue;
+                                
+                                const ngx = gx + dx;
+                                const ngy = gy + dy;
+                                if (ngx >= 0 && ngx < gridWidth && ngy >= 0 && ngy < gridHeight) {
+                                    const cell = grid[ngy * gridWidth + ngx];
+                                    for (const pIdx of cell) {
+                                        if (!used[pIdx]) {
+                                            const dSq = (cp.x - points[pIdx].x)**2 + (cp.y - points[pIdx].y)**2;
+                                            if (dSq < minDistSq) {
+                                                minDistSq = dSq;
+                                                nearestIdx = pIdx;
+                                                found = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        searchRadius++;
+                    }
+
+                    if (nearestIdx !== -1) {
+                        orderedPoints.push(points[nearestIdx]);
+                        used[nearestIdx] = 1;
+                        currentIdx = nearestIdx;
+                        remaining--;
+                    } else break;
+                }
+
+                return { contours: [orderedPoints], raw: [], skippedJoining: false };
+            }
+
+            removeContoursInRect(rect) {
+                // Filter out contours that are completely inside the rect
+                // or intersecting (for simplicity, we might remove intersecting ones too to avoid artifacts,
+                // or better, Clip them? Clipping is hard. Removing intersecting is safer but might leave gaps.
+                // For "rerun", we usually want to replace the area. 
+                // Let's remove any contour that has ANY point inside the rect.
+                // This ensures we don't have double lines.
+                
+                const newContours = [];
+                let removedCount = 0;
+                
+                for (const path of this.contours) {
+                    if (!path || path.length === 0) continue;
+                    
+                    let inside = false;
+                    for (const p of path) {
+                        if (!p || p.x === undefined || p.y === undefined) continue;
+                        if (p.x >= rect.x && p.x <= rect.x + rect.w &&
+                            p.y >= rect.y && p.y <= rect.y + rect.h) {
+                            inside = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!inside) {
+                        newContours.push(path);
+                    } else {
+                        removedCount++;
+                    }
+                }
+                
+                this.contours = newContours;
+                console.log(`Removed ${removedCount} contours in selected region`);
+                
+                // Also clear the canvas area
+                this.ctx.fillStyle = '#ffffff';
+                // Use a slightly larger rect to ensure cleanup
+                this.ctx.fillRect(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2); 
+                
+                // We also need to redraw remaining contours because we just wiped a rect
+                // and some valid contours might have been crossed by it but not removed? 
+                // Wait, if we removed ANY contour touching the rect, then no remaining contour should be inside.
+                // But the white fill might overwrite parts of contours that were NOT removed 
+                // if my "inside" logic was "completely inside". 
+                // My logic was "ANY point inside". So effectively we deleted anything touching the box.
+                // So the white box is safe to draw?
+                // Yes, because we removed everything that would have been in that box.
+                
+                // However, simply filling white might delete background of 'inverted' images? 
+                // We assume white background for contours.
+                
+                // Redraw all remaining contours to be safe and ensure clean state
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.drawContours();
+            }
+
+            async rerunRegion(rect, options) {
+                this.reset();
+                this.isPaused = false;
+                
+                // 1. Remove existing contours in the region
+                this.removeContoursInRect(rect);
+                
+                // 2. Extract NEW contours only in that region
+                // We need to use the stored solution/imageData.
+                // We assume processImage has run before.
+                
+                if (!this.solution) {
+                    throw new Error("No existing solution. Run Generate first.");
+                }
+
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const { interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth } = options;
+
+                // Extract contours with bounds
+                // Note: We use the options passed in, which might be different from original run (that's the point!)
+                
+                this.updateProgress(showProgress, 10, 'Extracting region contours...');
+                
+                const contourData = await this.extractContoursAdaptive(
+                    width, height, interval, maxSegments, skipJoining, showProgress, 
+                    lineColor, lineWidth, options, rect
+                );
+                
+                // 3. Join/Optimize the NEW local contours
+                // We need to run joinContoursImproved on just these new segments
+                
+                this.updateProgress(showProgress, 50, 'Joining region paths...');
+                
+                 // Note: joinContoursImproved builds a spatial index for ALL segments passed to it.
+                 // It should work fine for a subset.
+                 const newPaths = await this.joinContoursImproved(contourData.raw, showProgress, options);
+
+                 // 4. Merge back into main contours list
+                 const validNewPaths = newPaths.map(p => this.validatePath(p)).filter(p => p.length > 0);
+                 this.contours = [...this.contours, ...validNewPaths];
+                
+                // 5. Redraw everything
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+                this.drawContours();
+                
+                this.updateProgress(showProgress, 100, 'Region updated!');
+                
+                // Return new SVG
+                const antiAlias = document.getElementById('antiAlias').checked; // Grab from UI
+                return this.getSVG(width, height, lineColor, lineWidth, antiAlias);
+            }
+
+            drawContours() {
+                this.ctx.beginPath();
+                for (const path of this.contours) {
+                    if (!path || path.length < 2) continue;
+                    
+                    const validPoints = path.filter(p => p && p.x !== undefined && p.y !== undefined);
+                    if (validPoints.length < 2) continue;
+
+                    this.ctx.moveTo(validPoints[0].x, validPoints[0].y);
+
+                    // Smooth with quadratic Bézier curves
+                    for (let i = 1; i < validPoints.length - 2; i++) {
+                        const xc = (validPoints[i].x + validPoints[i + 1].x) / 2;
+                        const yc = (validPoints[i].y + validPoints[i + 1].y) / 2;
+                        this.ctx.quadraticCurveTo(validPoints[i].x, validPoints[i].y, xc, yc);
+                    }
+
+                    // Last segment
+                    if (validPoints.length > 2) {
+                        this.ctx.quadraticCurveTo(
+                            validPoints[validPoints.length - 2].x,
+                            validPoints[validPoints.length - 2].y,
+                            validPoints[validPoints.length - 1].x,
+                            validPoints[validPoints.length - 1].y
+                        );
+                    } else {
+                        this.ctx.lineTo(validPoints[1].x, validPoints[1].y);
+                    }
+                }
+                this.ctx.stroke();
+            }
+
+            async renderDebugVisualization(width, height, lineColor, lineWidth) {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+
+                if (this.vizMode === 'grayscale') {
+                    const imgData = this.ctx.createImageData(width, height);
+                    for (let i = 0; i < this.grayData.length; i++) {
+                        const val = Math.floor(this.grayData[i] * 255);
+                        imgData.data[i * 4] = val;
+                        imgData.data[i * 4 + 1] = val;
+                        imgData.data[i * 4 + 2] = val;
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    this.ctx.putImageData(imgData, 0, 0);
+                } else if (this.vizMode === 'heatmap') {
+                    const validValues = [];
+                    for (let i = 0; i < this.solution.length; i++) {
+                        if (this.solution[i] < Infinity) {
+                            validValues.push(this.solution[i]);
+                        }
+                    }
+                    const min = validValues.length > 0 ? Math.min(...validValues) : 0;
+                    const max = validValues.length > 0 ? Math.max(...validValues) : 1;
+                    const range = max - min || 1;
+
+                    const imgData = this.ctx.createImageData(width, height);
+                    for (let i = 0; i < this.solution.length; i++) {
+                        const val = this.solution[i];
+                        if (val >= Infinity) {
+                            imgData.data[i * 4] = 255;
+                            imgData.data[i * 4 + 1] = 255;
+                            imgData.data[i * 4 + 2] = 255;
+                        } else {
+                            const t = (val - min) / range;
+                            const r = Math.floor(t * 255);
+                            const b = Math.floor((1 - t) * 255);
+                            imgData.data[i * 4] = r;
+                            imgData.data[i * 4 + 1] = Math.floor((1 - Math.abs(t - 0.5) * 2) * 200);
+                            imgData.data[i * 4 + 2] = b;
+                        }
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    this.ctx.putImageData(imgData, 0, 0);
+                } else if (this.vizMode === 'raw') {
+                    this.ctx.strokeStyle = lineColor;
+                    this.ctx.lineWidth = lineWidth * 0.5;
+                    this.ctx.beginPath();
+                    for (const contour of this.rawContours) {
+                        for (const line of contour.lines) {
+                            this.ctx.moveTo(line.x1, line.y1);
+                            this.ctx.lineTo(line.x2, line.y2);
+                        }
+                    }
+                    this.ctx.stroke();
+                }
+
+                if (this.showOrigins && this.originPoints.length > 0) {
+                    this.ctx.fillStyle = 'red';
+                    for (const p of this.originPoints) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                }
+
+                if (this.showGrid) {
+                    this.ctx.strokeStyle = 'rgba(0, 0, 255, 0.2)';
+                    this.ctx.lineWidth = 0.5;
+                    this.ctx.beginPath();
+                    for (let x = 0; x <= width; x += 50) {
+                        this.ctx.moveTo(x, 0);
+                        this.ctx.lineTo(x, height);
+                    }
+                    for (let y = 0; y <= height; y += 50) {
+                        this.ctx.moveTo(0, y);
+                        this.ctx.lineTo(width, y);
+                    }
+                    this.ctx.stroke();
+                }
+
+                return '<svg></svg>';
+            }
+
+            getSVG(width, height, lineColor, lineWidth, antiAlias) {
+                let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" fill="white"/>
+  <g stroke="${lineColor}" stroke-width="${lineWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round">`;
+
+                for (const path of this.contours) {
+                    if (!path || path.length < 2) continue;
+
+                    const validPoints = this.validatePath(path);
+                    if (validPoints.length < 2) continue;
+
+                    // Start path at first point
+                    let pathData = `M${validPoints[0].x.toFixed(2)},${validPoints[0].y.toFixed(2)}`;
+
+                    if (validPoints.length === 2) {
+                        // Simple line for 2-point paths
+                        pathData += ` L${validPoints[1].x.toFixed(2)},${validPoints[1].y.toFixed(2)}`;
+                    } else {
+                        // Smooth with quadratic Bézier curves (same as canvas rendering)
+                        for (let i = 1; i < validPoints.length - 2; i++) {
+                            const xc = (validPoints[i].x + validPoints[i + 1].x) / 2;
+                            const yc = (validPoints[i].y + validPoints[i + 1].y) / 2;
+                            pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${xc.toFixed(2)},${yc.toFixed(2)}`;
+                        }
+
+                        // Last segment
+                        const i = validPoints.length - 2;
+                        pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${validPoints[validPoints.length - 1].x.toFixed(2)},${validPoints[validPoints.length - 1].y.toFixed(2)}`;
+                    }
+
+                    svg += `\n    <path d="${pathData}"/>`;
+                }
+
+                svg += '\n  </g>\n</svg>';
+                return svg;
+            }
+
+            // ============================================
+            // PHASE 1: ADAPTIVE CONTOUR EXTRACTION MODULES
+            // ============================================
+
+            computeEdgeMap(imageData, width, height) {
+                const gray = this.toGrayscale(imageData);
+                const edges = new Float32Array(width * height);
+
+                const sobelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
+                const sobelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
+
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        let gx = 0, gy = 0;
+
+                        for (let ky = -1; ky <= 1; ky++) {
+                            for (let kx = -1; kx <= 1; kx++) {
+                                const idx = ((y + ky) * width + (x + kx));
+                                const weight = gray[idx];
+                                const sxIdx = (ky + 1) * 3 + (kx + 1);
+                                gx += sobelX[sxIdx] * weight;
+                                gy += sobelY[sxIdx] * weight;
+                            }
+                        }
+
+                        edges[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+                    }
+                }
+
+                // Normalize
+                let maxEdge = 0;
+                for (let i = 0; i < edges.length; i++) {
+                    if (edges[i] > maxEdge) maxEdge = edges[i];
+                }
+                if (maxEdge > 0) {
+                    for (let i = 0; i < edges.length; i++) {
+                        edges[i] /= maxEdge;
+                    }
+                }
+
+                return edges;
+            }
+
+            computeDistanceFieldGradient(solution, width, height) {
+                const gradX = new Float32Array(width * height);
+                const gradY = new Float32Array(width * height);
+                const gradMag = new Float32Array(width * height);
+
+                for (let y = 1; y < height - 1; y++) {
+                    const rowOffset = y * width;
+                    const upOffset = (y - 1) * width;
+                    const downOffset = (y + 1) * width;
+
+                    for (let x = 1; x < width - 1; x++) {
+                        const idx = rowOffset + x;
+                        const val = solution[idx];
+
+                        if (val >= Infinity) {
+                            gradX[idx] = gradY[idx] = gradMag[idx] = 0;
+                            continue;
+                        }
+
+                        const gx = (solution[rowOffset + (x + 1)] - solution[rowOffset + (x - 1)]) / 2;
+                        const gy = (solution[downOffset + x] - solution[upOffset + x]) / 2;
+
+                        gradX[idx] = gx;
+                        gradY[idx] = gy;
+                        gradMag[idx] = Math.sqrt(gx * gx + gy * gy);
+                    }
+                }
+
+                return { gradX, gradY, gradMag };
+            }
+
+             generateAdaptiveLevels(solution, width, height, interval, minVal, maxVal, gradMag) {
+                 const levels = [];
+                 const range = maxVal - minVal;
+
+                 // Calculate how many levels we'd get with fixed intervals
+                 const fixedLevelCount = Math.floor(range / interval);
+
+                 // If range is small or gradient is weak, use original approach
+                 if (range < interval * 3 || fixedLevelCount < 3) {
+                     // Use original marching squares logic - guaranteed to work
+                     for (let l = minVal + interval; l < maxVal; l += interval) {
+                         levels.push(l);
+                     }
+                     console.log('Using original level generation:', levels.length, 'levels');
+                     return levels;
+                 }
+
+                 // Otherwise use adaptive approach (for better detail preservation)
+                 const maxIterations = Math.min(5000, fixedLevelCount * 2);
+                 const minAdaptiveInterval = Math.max(interval * 0.3, 0.15); // Increased minimum interval
+                 const maxAdaptiveInterval = interval * 2.0; // Added maximum interval limit
+                 let currentLevel = minVal + interval;
+                 let iterations = 0;
+
+                 // Memory-efficient gradient normalization (no array spread to avoid stack overflow)
+                 let maxGrad = 0;
+                 let gradSumTotal = 0;
+                 let validGradCount = 0;
+                 for (let i = 0; i < gradMag.length; i++) {
+                     if (gradMag[i] > maxGrad) maxGrad = gradMag[i];
+                     if (gradMag[i] > 0) {
+                         gradSumTotal += gradMag[i];
+                         validGradCount++;
+                     }
+                 }
+                 const gradNormalization = 1 / (maxGrad || 1);
+                 const avgGradient = validGradCount > 0 ? gradSumTotal / validGradCount : 0.5;
+
+                 console.log('Adaptive contours - Gradient stats:', {
+                     maxGrad: maxGrad.toFixed(3),
+                     avgGrad: avgGradient.toFixed(3),
+                     range: range.toFixed(2),
+                     fixedLevelCount: fixedLevelCount
+                 });
+
+                 while (currentLevel < maxVal && iterations < maxIterations) {
+                     iterations++;
+                     levels.push(currentLevel);
+
+                     // Compute average gradient in the region around this level
+                     let gradSum = 0;
+                     let count = 0;
+
+                     for (let y = 1; y < height - 1; y++) {
+                         for (let x = 1; x < width - 1; x++) {
+                             const idx = y * width + x;
+                             if (solution[idx] >= Infinity) continue;
+
+                             const levelDist = Math.abs(solution[idx] - currentLevel);
+                             if (levelDist < interval * 2) {
+                                 gradSum += gradMag[idx] * gradNormalization;
+                                 count++;
+                             }
+                         }
+                     }
+
+                     const avgGrad = count > 0 ? gradSum / count : avgGradient;
+                     
+                     // Improved adaptation formula - more conservative and bounded
+                     // This prevents extreme interval variations that can cause issues
+                     const adaptFactorBase = 0.8 + 0.2 * Math.exp(-avgGrad * 1.5); // Less aggressive adaptation
+                     const adaptFactor = Math.max(0.5, Math.min(1.5, adaptFactorBase)); // Bound the factor
+                     const nextInterval = Math.max(minAdaptiveInterval, Math.min(maxAdaptiveInterval, interval * adaptFactor));
+
+                     console.log(`Level ${iterations}: ${currentLevel.toFixed(2)} -> interval: ${nextInterval.toFixed(3)}, grad: ${avgGrad.toFixed(3)}, factor: ${adaptFactor.toFixed(3)}`);
+
+                     currentLevel += nextInterval;
+                 }
+
+                 // Improved fallback logic - more nuanced decision
+                 const minimumLevels = Math.min(5, Math.max(3, Math.floor(fixedLevelCount * 0.3)));
+                 if (levels.length < minimumLevels) {
+                     console.warn(`Adaptive level generation produced too few levels (${levels.length} < ${minimumLevels}), falling back to original`);
+                     levels.length = 0;
+                     for (let l = minVal + interval; l < maxVal; l += interval) {
+                         levels.push(l);
+                     }
+                 }
+
+                 console.log('Adaptive level generation:', levels.length, 'levels from range', range.toFixed(2), 'avg interval:', levels.length > 1 ? (range / levels.length).toFixed(3) : 'N/A');
+                 return levels;
+             }
+
+            snapToEdge(x, y, targetLevel, edgeMap, solution, width, height, edgeSensitivity, interval) {
+                // Only snap if edge sensitivity is high enough
+                if (edgeSensitivity < 0.3) return { x, y };
+
+                // Reduced search radius for more conservative snapping
+                const searchRadius = Math.max(1, Math.floor(2 * edgeSensitivity));
+                let bestLevelDist = Infinity;
+                let bestPoint = { x, y };
+
+                for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+                    for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+                        const nx = Math.round(x + dx);
+                        const ny = Math.round(y + dy);
+
+                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+
+                        const edgeIdx = ny * width + nx;
+                        const levelIdx = ny * width + nx;
+
+                        // Only consider strong edge pixels
+                        if (edgeMap[edgeIdx] > 0.4) {
+                            const levelDist = Math.abs(solution[levelIdx] - targetLevel);
+                            // Only snap if very close to target level
+                            if (levelDist < bestLevelDist && levelDist < interval * 0.5) {
+                                bestLevelDist = levelDist;
+                                bestPoint = { x: nx, y: ny };
+                            }
+                        }
+                    }
+                }
+
+                return bestPoint;
+            }
+
+            // ============================================
+            // PHASE 2: TOPOLOGY IMPROVEMENTS MODULES
+            // ============================================
+
+            buildSpatialIndex(segments, width, height) {
+                const gridSize = 10;
+                const cellWidth = Math.ceil(width / gridSize);
+                const cellHeight = Math.ceil(height / gridSize);
+                const grid = Array(gridSize * gridSize).fill().map(() => []);
+
+                segments.forEach((seg, index) => {
+                    const cellX = Math.min(gridSize - 1, Math.floor(seg.x1 / cellWidth));
+                    const cellY = Math.min(gridSize - 1, Math.floor(seg.y1 / cellHeight));
+                    const cellIdx = cellY * gridSize + cellX;
+                    grid[cellIdx].push(index);
+                });
+
+                return {
+                    query: (x, y, radius) => {
+                        const results = [];
+                        const minCellX = Math.max(0, Math.floor((x - radius) / cellWidth));
+                        const maxCellX = Math.min(gridSize - 1, Math.floor((x + radius) / cellWidth));
+                        const minCellY = Math.max(0, Math.floor((y - radius) / cellHeight));
+                        const maxCellY = Math.min(gridSize - 1, Math.floor((y + radius) / cellHeight));
+
+                        for (let cy = minCellY; cy <= maxCellY; cy++) {
+                            for (let cx = minCellX; cx <= maxCellX; cx++) {
+                                results.push(...grid[cy * gridSize + cx]);
+                            }
+                        }
+                        return results;
+                    },
+                    grid,
+                    gridSize,
+                    cellWidth,
+                    cellHeight
+                };
+            }
+
+            pointDistance(p1, p2) {
+                if (!p1 || !p2 || p1.x === undefined || p1.y === undefined || p2.x === undefined || p2.y === undefined) {
+                    return Infinity;
+                }
+                const dx = p1.x - p2.x;
+                const dy = p1.y - p2.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            smoothPath(path, smoothness = 0.5) {
+                if (path.length < 3) return path;
+
+                const smoothed = [];
+                const kernelSize = Math.max(1, Math.floor(smoothness * 3));
+
+                for (let i = 0; i < path.length; i++) {
+                    let x = 0, y = 0, weightSum = 0;
+
+                    for (let j = -kernelSize; j <= kernelSize; j++) {
+                        const idx = i + j;
+                        if (idx >= 0 && idx < path.length) {
+                            const weight = 1 - Math.abs(j) / (kernelSize + 1);
+                            x += path[idx].x * weight;
+                            y += path[idx].y * weight;
+                            weightSum += weight;
+                        }
+                    }
+
+                    smoothed.push({
+                        x: x / weightSum,
+                        y: y / weightSum
+                    });
+                }
+
+                return smoothed;
+            }
+
+            // ============================================
+            // PHASE 1: ADAPTIVE CONTOUR EXTRACTION
+            // ============================================
+
+            async extractContoursAdaptive(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, options, bounds = null) {
+                const {
+                    edgeGuidance = true,
+                    edgeSensitivity = 0.7,
+                    detailLevel = 0.8,
+                    contourSmoothness = 0.5
+                } = options;
+
+                const validValues = [];
+                // Only scan valid values within bounds if provided
+                let scanStartX = 0, scanEndX = width;
+                let scanStartY = 0, scanEndY = height;
+                
+                if (bounds) {
+                    scanStartX = Math.max(0, Math.floor(bounds.x));
+                    scanEndX = Math.min(width, Math.ceil(bounds.x + bounds.w));
+                    scanStartY = Math.max(0, Math.floor(bounds.y));
+                    scanEndY = Math.min(height, Math.ceil(bounds.y + bounds.h));
+                }
+
+                // If bounds provided, we reuse global min/max from solution if possible, 
+                // but here we might just recompute local min/max to ensure we generate contours relevant to this area?
+                // Actually, level generation should probably stay consistent with global image if we want continuity.
+                // But if user changed settings, they might want new levels.
+                // Let's scan the whole solution for min/max if bounds are small, or just assume global consistency?
+                // For safety, let's scan validValues in the region.
+
+                for (let y = scanStartY; y < scanEndY; y++) {
+                    for (let x = scanStartX; x < scanEndX; x++) {
+                        const idx = y * width + x;
+                        if (this.solution[idx] < Infinity) {
+                            validValues.push(this.solution[idx]);
+                        }
+                    }
+                }
+
+                if (validValues.length === 0) {
+                    return { contours: [], raw: [], skippedJoining: false };
+                }
+
+                const rawContours = [];
+                let min = Infinity;
+                let max = -Infinity;
+
+                for (let i = 0; i < validValues.length; i++) {
+                    const v = validValues[i];
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+
+                // Compute edge map and gradient for adaptive processing
+                // Note: edgeMap/gradient are global. If we rerun, we assume imageData hasn't changed.
+                const edgeMap = edgeGuidance ? this.computeEdgeMap(this.imageData, width, height) : null;
+                const { gradMag } = this.computeDistanceFieldGradient(this.solution, width, height);
+
+                // Generate adaptive levels based on gradient magnitude
+                // If bounds are set, we might get different levels than global.
+                // Ideally we should reuse levels if we want perfect stitching.
+                // But usually "Rerun" implies "Try to do better here", so new levels are fine.
+                const levels = this.generateAdaptiveLevels(this.solution, width, height, interval, min, max, gradMag);
+
+                const safeGet = (x, y) => {
+                    if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
+                    return this.solution[y * width + x];
+                };
+
+                const interp = (v1, v2, level) => {
+                    if (v1 === Infinity || v2 === Infinity) return 0.5;
+                    const diff = v2 - v1;
+                    if (Math.abs(diff) < 0.00001) return 0.5;
+                    return Math.max(0, Math.min(1, (level - v1) / diff));
+                };
+
+                let totalLines = 0;
+                const batchSize = 5000;
+                let processed = 0;
+
+                // Clear canvas once before processing all levels (live preview accumulation)
+                // If bounds set, we only clear the region? Or assume caller handles it.
+                if (this.livePreviewEnabled && !bounds) {
+                    this.livePreviewManager.renderRawSegments([], width, height, lineColor, lineWidth, true);
+                }
+
+                // Determine loop limits for marching squares
+                const loopStartX = scanStartX;
+                const loopEndX = Math.min(width - 1, scanEndX); // Marching squares needs x+1
+                const loopStartY = scanStartY;
+                const loopEndY = Math.min(height - 1, scanEndY);
+
+                for (const level of levels) {
+                    const levelLines = [];
+
+                    for (let y = loopStartY; y < loopEndY; y++) {
+                        for (let x = loopStartX; x < loopEndX; x++) {
+                            const v00 = safeGet(x, y);
+                            const v10 = safeGet(x + 1, y);
+                            const v01 = safeGet(x, y + 1);
+                            const v11 = safeGet(x + 1, y + 1);
+
+                            let code = 0;
+                            if (v00 >= level) code |= 1;
+                            if (v10 >= level) code |= 2;
+                            if (v01 >= level) code |= 4;
+                            if (v11 >= level) code |= 8;
+
+                            const lines = [];
+                            const addLine = (x1, y1, x2, y2) => {
+                                // Apply edge snapping if enabled
+                                if (edgeGuidance && edgeSensitivity > 0.1) {
+                                    const p1 = this.snapToEdge(x + x1, y + y1, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
+                                    const p2 = this.snapToEdge(x + x2, y + y2, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
+                                    lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+                                } else {
+                                    lines.push({ x1: x + x1, y1: y + y1, x2: x + x2, y2: y + y2 });
+                                }
+                            };
+
+                            switch (code) {
+                                case 1:
+                                case 14:
+                                    addLine(0, interp(v00, v10, level), 0.5, 0); break;
+                                case 2:
+                                case 13:
+                                    addLine(0.5, 0, 1, interp(v10, v11, level)); break;
+                                case 3:
+                                case 12:
+                                    addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level)); break;
+                                case 4:
+                                case 11:
+                                    addLine(0.5, 1, interp(v01, v11, level), 1); break;
+                                case 5:
+                                    addLine(0, interp(v00, v10, level), 0.5, 1);
+                                    addLine(0.5, 0, interp(v01, v11, level), 1); break;
+                                case 6:
+                                case 9:
+                                    addLine(0.5, 0, 0.5, 1); break;
+                                case 7:
+                                case 8:
+                                    addLine(0, interp(v00, v10, level), 0.5, 1);
+                                    addLine(0.5, 0, 1, interp(v10, v11, level)); break;
+                                case 10:
+                                    addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
+                                    addLine(0.5, 0, 0.5, 1); break;
+                            }
+
+                            levelLines.push(...lines);
+
+                            processed++;
+                            if (processed % batchSize === 0) {
+                                if (this.isCancelled) throw new Error('Cancelled by user');
+                                await this.checkPause();
+                                await new Promise(r => setTimeout(r, 0));
+                            }
+                        }
+                    }
+
+                     totalLines += levelLines.length;
+                     if (levelLines.length > 0) {
+                         rawContours.push({ level, lines: levelLines });
+                     }
+
+                    if (!bounds) { // Only update progress if full run
+                        const levelIndex = levels.indexOf(level);
+                        const progress = 60 + (levelIndex / levels.length) * 20;
+                        this.updateProgress(showProgress, progress, `Extracting contours (level ${levelIndex + 1}/${levels.length})...`);
+                    }
+
+                    if (this.livePreviewEnabled && levelLines.length > 0) {
+                        // If bounds, we probably shouldn't clear? 
+                        // livePreviewManager.renderRawSegments clears by default for first call.
+                        // But here we are calling it per level.
+                        // renderRawSegments logic: 'clear' param is true only if explicit.
+                        // In loop it was 'false'.
+                        // But wait, if bounds is set, we want to draw ON TOP of existing canvas?
+                        // livePreviewManager draws to ctx.
+                        // If we are rerunning a region, we should have cleared that region on the canvas before.
+                        // We'll handle canvas clearing in rerunRegion.
+                        this.livePreviewManager.renderRawSegments(levelLines, width, height, lineColor, lineWidth, false);
+                    }
+                }
+
+                 // If bounds are present, return raw segments immediately
+                 if (bounds) {
+                     return { contours: [], raw: rawContours, skippedJoining: true };
+                 }
+
+                 // Add validation to ensure we have meaningful contours
+                 if (rawContours.length === 0) {
+                     console.warn('No contours generated from any level - this indicates a problem with level generation');
+                     // Fallback to basic contour generation
+                     const fallbackLevels = [];
+                     for (let l = minVal + interval; l < maxVal; l += interval) {
+                         fallbackLevels.push(l);
+                     }
+                     console.log('Falling back to basic level generation with', fallbackLevels.length, 'levels');
+                     
+                     // Re-run with fallback levels
+                     const fallbackContours = [];
+                     for (const level of fallbackLevels) {
+                         const levelLines = [];
+                         for (let y = 0; y < height - 1; y++) {
+                             for (let x = 0; x < width - 1; x++) {
+                                 const v00 = safeGet(x, y);
+                                 const v10 = safeGet(x + 1, y);
+                                 const v01 = safeGet(x, y + 1);
+                                 const v11 = safeGet(x + 1, y + 1);
+
+                                 let code = 0;
+                                 if (v00 >= level) code |= 1;
+                                 if (v10 >= level) code |= 2;
+                                 if (v01 >= level) code |= 4;
+                                 if (v11 >= level) code |= 8;
+
+                                 const lines = [];
+                                 const addLine = (x1, y1, x2, y2) => {
+                                     lines.push({ x1: x + x1, y1: y + y1, x2: x + x2, y2: y + y2 });
+                                 };
+
+                                 switch (code) {
+                                     case 1:
+                                     case 14:
+                                         addLine(0, interp(v00, v10, level), 0.5, 0); break;
+                                     case 2:
+                                     case 13:
+                                         addLine(0.5, 0, 1, interp(v10, v11, level)); break;
+                                     case 3:
+                                     case 12:
+                                         addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level)); break;
+                                     case 4:
+                                     case 11:
+                                         addLine(0.5, 1, interp(v01, v11, level), 1); break;
+                                     case 5:
+                                         addLine(0, interp(v00, v10, level), 0.5, 1);
+                                         addLine(0.5, 0, interp(v01, v11, level), 1); break;
+                                     case 6:
+                                     case 9:
+                                         addLine(0.5, 0, 0.5, 1); break;
+                                     case 7:
+                                     case 8:
+                                         addLine(0, interp(v00, v10, level), 0.5, 1);
+                                         addLine(0.5, 0, 1, interp(v10, v11, level)); break;
+                                     case 10:
+                                         addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
+                                         addLine(0.5, 0, 0.5, 1); break;
+                                 }
+
+                                 levelLines.push(...lines);
+                             }
+                         }
+                         if (levelLines.length > 0) {
+                             fallbackContours.push({ level, lines: levelLines });
+                         }
+                     }
+                     
+                     if (fallbackContours.length === 0) {
+                         console.error('Even fallback contour generation failed - no contours will be returned');
+                         return { contours: [], raw: [], skippedJoining: false };
+                     }
+                     
+                     rawContours = fallbackContours;
+                 }
+
+                 if (totalLines > maxSegments || skipJoining) {
+                     const unjoined = [];
+                     for (const contour of rawContours) {
+                         for (const line of contour.lines) {
+                             unjoined.push([
+                                 { x: line.x1, y: line.y1 },
+                                 { x: line.x2, y: line.y2 }
+                             ]);
+                         }
+                     }
+                     return { contours: unjoined, raw: rawContours, skippedJoining: true };
+                 }
+
+                this.updateProgress(showProgress, 80, 'Joining paths...');
+                const joined = await this.joinContoursImproved(rawContours, showProgress, options);
+                return { contours: joined, raw: rawContours, skippedJoining: false };
+            }
+
+             // ============================================
+            // PHASE 2: ENHANCED CONTOUR JOINING & OPTIMIZATION
+            // ============================================
+
+            validatePath(path) {
+                if (!path || path.length === 0) return [];
+                return path.filter(p => p && p.x !== undefined && p.y !== undefined);
+            }
+
+            // Ramer-Douglas-Peucker Simplification
+            simplifyPath(points, epsilon) {
+                if (!points || points.length <= 2) return this.validatePath(points);
+
+                const validPoints = this.validatePath(points);
+                if (validPoints.length <= 2) return validPoints;
+
+                let dmax = 0;
+                let index = 0;
+                const end = validPoints.length - 1;
+
+                for (let i = 1; i < end; i++) {
+                    const d = this.perpendicularDistance(validPoints[i], validPoints[0], validPoints[end]);
+                    if (d > dmax) {
+                        index = i;
+                        dmax = d;
+                    }
+                }
+
+                if (dmax > epsilon) {
+                    const recResults1 = this.simplifyPath(validPoints.slice(0, index + 1), epsilon);
+                    const recResults2 = this.simplifyPath(validPoints.slice(index, end + 1), epsilon);
+                    return recResults1.slice(0, recResults1.length - 1).concat(recResults2);
+                } else {
+                    return [validPoints[0], validPoints[end]];
+                }
+            }
+
+            perpendicularDistance(point, lineStart, lineEnd) {
+                if (!point || !lineStart || !lineEnd ||
+                    point.x === undefined || point.y === undefined ||
+                    lineStart.x === undefined || lineStart.y === undefined ||
+                    lineEnd.x === undefined || lineEnd.y === undefined) {
+                    return 0;
+                }
+                let dx = lineEnd.x - lineStart.x;
+                let dy = lineEnd.y - lineStart.y;
+
+                const mag = Math.sqrt(dx * dx + dy * dy);
+                if (mag > 0) {
+                    dx /= mag;
+                    dy /= mag;
+                }
+
+                const pvx = point.x - lineStart.x;
+                const pvy = point.y - lineStart.y;
+
+                const pvdot = pvx * dx + pvy * dy;
+                const ax = pvx - pvdot * dx;
+                const ay = pvy - pvdot * dy;
+
+                return Math.sqrt(ax * ax + ay * ay);
+            }
+
+            // Catmull-Rom Spline Smoothing
+            getSplinePoints(points, segments = 4, tension = 0.5) {
+                if (!points || points.length < 2) return this.validatePath(points);
+
+                const validPoints = this.validatePath(points);
+                if (validPoints.length < 2) return validPoints;
+
+                const spline = [];
+                // Duplicate start and end points for the algorithm
+                const p = [validPoints[0], ...validPoints, validPoints[validPoints.length - 1]];
+
+                for (let i = 0; i < p.length - 3; i++) {
+                    const p0 = p[i];
+                    const p1 = p[i + 1];
+                    const p2 = p[i + 2];
+                    const p3 = p[i + 3];
+
+                    if (!p0 || !p1 || !p2 || !p3) continue;
+
+                    for (let t = 0; t < segments; t++) {
+                        // For the last segment, include the end point
+                        if (i === p.length - 4 && t === segments - 1) {
+                             spline.push(this.catmullRom(p0, p1, p2, p3, 1.0, tension));
+                        } else {
+                             const st = t / segments;
+                             spline.push(this.catmullRom(p0, p1, p2, p3, st, tension));
+                        }
+                    }
+                }
+
+                // Ensure the very last point is included and exact
+                if (spline.length > 0) {
+                     const lastSpline = spline[spline.length - 1];
+                     const lastPoint = validPoints[validPoints.length - 1];
+                     if (lastSpline.x !== lastPoint.x || lastSpline.y !== lastPoint.y) {
+                         spline.push(lastPoint);
+                     }
+                } else {
+                    return validPoints;
+                }
+
+                return this.validatePath(spline);
+            }
+
+            catmullRom(p0, p1, p2, p3, t, tension) {
+                const t2 = t * t;
+                const t3 = t2 * t;
+
+                const v0 = (p2.x - p0.x) * tension;
+                const v1 = (p3.x - p1.x) * tension;
+                const x = (2 * p1.x - 2 * p2.x + v0 + v1) * t3 + (-3 * p1.x + 3 * p2.x - 2 * v0 - v1) * t2 + v0 * t + p1.x;
+
+                const u0 = (p2.y - p0.y) * tension;
+                const u1 = (p3.y - p1.y) * tension;
+                const y = (2 * p1.y - 2 * p2.y + u0 + u1) * t3 + (-3 * p1.y + 3 * p2.y - 2 * u0 - u1) * t2 + u0 * t + p1.y;
+
+                return { x, y };
+            }
+
+            getPathLength(path) {
+                if (!path || path.length < 2) return 0;
+
+                const validPath = this.validatePath(path);
+                if (validPath.length < 2) return 0;
+
+                let len = 0;
+                for (let i = 0; i < validPath.length - 1; i++) {
+                    len += this.pointDistance(validPath[i], validPath[i+1]);
+                }
+                return len;
+            }
+
+            // Greedy TSP-Lite for Path Optimization
+            optimizePathOrder(paths) {
+                if (!paths || paths.length === 0) return [];
+
+                const validPaths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
+                if (validPaths.length === 0) return [];
+
+                const ordered = [];
+                const remaining = new Set(validPaths.map((_, i) => i));
+
+                let currentPos = { x: 0, y: 0 };
+
+                while (remaining.size > 0) {
+                    let nearestIdx = -1;
+                    let minDist = Infinity;
+                    let reverseBest = false;
+
+                    for (const idx of remaining) {
+                        const path = validPaths[idx];
+                        const start = path[0];
+                        const end = path[path.length - 1];
+
+                        if (!start || !end) continue;
+
+                        const dStart = this.pointDistance(currentPos, start);
+                        const dEnd = this.pointDistance(currentPos, end);
+
+                        if (dStart < minDist) {
+                            minDist = dStart;
+                            nearestIdx = idx;
+                            reverseBest = false;
+                        }
+
+                        if (dEnd < minDist) {
+                            minDist = dEnd;
+                            nearestIdx = idx;
+                            reverseBest = true;
+                        }
+                    }
+
+                    if (nearestIdx !== -1) {
+                        let bestPath = validPaths[nearestIdx];
+                        if (reverseBest) {
+                            bestPath = [...bestPath].reverse();
+                        }
+
+                        ordered.push(bestPath);
+                        currentPos = bestPath[bestPath.length - 1];
+                        remaining.delete(nearestIdx);
+                    } else {
+                        break; // Should not happen
+                    }
+                }
+
+                return ordered;
+            }
+
+            async joinContoursImproved(rawContours, showProgress, options = {}) {
+                // Extract options with new defaults for improved quality
+                const contourSmoothness = options.contourSmoothness ?? 0.5;
+                const simplification = options.simplification ?? 1.0; // RDP Epsilon (pixels)
+                const optimizePath = options.optimizePath !== false; // Default true
+                const minPathLength = options.minPathLength ?? 5; // Remove noise (pixels)
+                const splineResolution = options.splineResolution ?? 4; // Points per segment
+
+                const allSegments = [];
+                for (const contour of rawContours) {
+                    allSegments.push(...contour.lines);
+                }
+
+                const width = this.canvas.width;
+                const height = this.canvas.height;
+                const spatialIndex = this.buildSpatialIndex(allSegments, width, height);
+
+                let paths = [];
+                const used = new Set();
+                const TOLERANCE = 2.0; 
+
+                for (let i = 0; i < allSegments.length; i++) {
+                    if (used.has(i)) continue;
+
+                    let currentPath = [{ x: allSegments[i].x1, y: allSegments[i].y1 }];
+                    const segmentRefs = [i];
+                    used.add(i);
+                    let currentEnd = { x: allSegments[i].x2, y: allSegments[i].y2 };
+
+                    // Follow the path forward
+                    while (true) {
+                        const neighbors = spatialIndex.query(currentEnd.x, currentEnd.y, TOLERANCE);
+                        let bestMatch = null;
+                        let bestDist = Infinity;
+
+                        for (const neighborIdx of neighbors) {
+                            if (used.has(neighborIdx)) continue;
+                            if (neighborIdx >= allSegments.length) continue;
+
+                            const neighbor = allSegments[neighborIdx];
+                            if (!neighbor) continue;
+
+                            // Check if this segment connects to current end
+                            const dist1 = this.pointDistance(currentEnd, { x: neighbor.x1, y: neighbor.y1 });
+                            const dist2 = this.pointDistance(currentEnd, { x: neighbor.x2, y: neighbor.y2 });
+
+                            if (dist1 < TOLERANCE && dist1 < bestDist) {
+                                bestDist = dist1;
+                                bestMatch = { idx: neighborIdx, reverse: false };
+                            }
+                            if (dist2 < TOLERANCE && dist2 < bestDist) {
+                                bestDist = dist2;
+                                bestMatch = { idx: neighborIdx, reverse: true };
+                            }
+                        }
+
+                        if (!bestMatch) break;
+
+                        const seg = allSegments[bestMatch.idx];
+                        if (bestMatch.reverse) {
+                            currentPath.push({ x: seg.x2, y: seg.y2 });
+                        } else {
+                            currentPath.push({ x: seg.x1, y: seg.y1 });
+                        }
+
+                        segmentRefs.push(bestMatch.idx);
+                        used.add(bestMatch.idx);
+                        currentEnd = bestMatch.reverse ? { x: seg.x1, y: seg.y1 } : { x: seg.x2, y: seg.y2 };
+                    }
+
+                    // Follow the path backward from start
+                    let currentStart = currentPath[0];
+                    while (true) {
+                        const neighbors = spatialIndex.query(currentStart.x, currentStart.y, TOLERANCE);
+                        let bestMatch = null;
+                        let bestDist = Infinity;
+
+                        for (const neighborIdx of neighbors) {
+                            if (used.has(neighborIdx)) continue;
+                            if (neighborIdx >= allSegments.length) continue;
+
+                            const neighbor = allSegments[neighborIdx];
+                            if (!neighbor) continue;
+
+                            const dist1 = this.pointDistance(currentStart, { x: neighbor.x2, y: neighbor.y2 });
+                            const dist2 = this.pointDistance(currentStart, { x: neighbor.x1, y: neighbor.y1 });
+
+                            if (dist1 < TOLERANCE && dist1 < bestDist) {
+                                bestDist = dist1;
+                                bestMatch = { idx: neighborIdx, reverse: true };
+                            }
+                            if (dist2 < TOLERANCE && dist2 < bestDist) {
+                                bestDist = dist2;
+                                bestMatch = { idx: neighborIdx, reverse: false };
+                            }
+                        }
+
+                        if (!bestMatch) break;
+
+                        const seg = allSegments[bestMatch.idx];
+                        if (bestMatch.reverse) {
+                            currentPath.unshift({ x: seg.x1, y: seg.y1 });
+                        } else {
+                            currentPath.unshift({ x: seg.x2, y: seg.y2 });
+                        }
+
+                        segmentRefs.push(bestMatch.idx);
+                        used.add(bestMatch.idx);
+                        currentStart = bestMatch.reverse ? { x: seg.x2, y: seg.y2 } : { x: seg.x1, y: seg.y1 };
+                    }
+
+                    if (currentPath.length > 1) {
+                         const validatedPath = this.validatePath(currentPath);
+                         if (validatedPath.length > 1) {
+                             paths.push(validatedPath);
+                         }
+                    }
+
+                    if (paths.length % 100 === 0) {
+                        this.updateProgress(showProgress, 80 + (paths.length / (allSegments.length / 10)) * 10, 'Joining paths...');
+                        await this.checkPause();
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+                }
+                
+                 // === NEW POST-PROCESSING PIPELINE ===
+
+                 // 1. Noise Filter (Length)
+                 paths = paths.filter(p => this.getPathLength(p) > minPathLength);
+                 paths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
+
+                 // 2. Simplify (RDP)
+                 // Use epsilon based on detail settings, default 1.0 is good for plotters
+                 paths = paths.map(p => this.simplifyPath(p, simplification));
+                 paths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
+
+                 // 3. Smoothing (Catmull-Rom Spline)
+                 // Replaces the old simple averaging
+                 if (contourSmoothness > 0.1) {
+                     paths = paths.map(p => this.getSplinePoints(p, splineResolution, 0.5));
+                     paths = paths.map(p => this.validatePath(p)).filter(p => p.length > 0);
+                 }
+
+                 // 4. Path Optimization (TSP-Lite)
+                 if (optimizePath) {
+                     this.updateProgress(showProgress, 95, 'Optimizing plotter paths...');
+                     // Small delay to let UI update
+                     await new Promise(r => setTimeout(r, 10));
+                     paths = this.optimizePathOrder(paths);
+                 }
+
+                 return paths;
+            }
+        }
+
+        const marchingWaves = new MarchingWaves();
+        const selectionManager = new SelectionManager(
+            document.getElementById('selectionOverlay'),
+            document.getElementById('selectionBox'),
+            document.getElementById('outputCanvas')
+        );
+
+        webGPUManager.init().then(available => {
+            const statusEl = document.getElementById('gpuStatus');
+            const statusText = document.getElementById('gpuStatusText');
+            const statusIcon = document.getElementById('gpuStatusIcon');
+
+            if (available) {
+                console.log('WebGPU acceleration enabled (grayscale + Eikonal JFA)');
+                statusEl.className = 'status success';
+                statusText.textContent = 'ACTIVE (WebGPU)';
+                statusIcon.textContent = '⚡';
+            } else {
+                console.log('Using CPU fallback (WebGPU not available)');
+                statusEl.className = 'status warning';
+                statusText.textContent = 'INACTIVE (CPU Fallback)';
+                statusIcon.textContent = '⚠️';
+            }
+        });
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const sampleBtn = document.getElementById('sampleBtn');
+        const dropPreview = document.getElementById('dropPreview');
+        const placeholder = document.getElementById('placeholder');
+        const previewContainer = document.getElementById('previewContainer');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const generateBtn = document.getElementById('generateBtn');
+        const cancelBtnContainer = document.getElementById('cancelBtnContainer');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const selectionBtn = document.getElementById('selectionBtn');
+        const rerunBtn = document.getElementById('rerunBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const status = document.getElementById('status');
+        const debugMode = document.getElementById('debugMode');
+        const vizModeGroup = document.getElementById('vizModeGroup');
+        const originGroup = document.getElementById('originGroup');
+        const gridGroup = document.getElementById('gridGroup');
+        const perfGroup = document.getElementById('perfGroup');
+        const perfStats = document.getElementById('perfStats');
+
+        let currentImage = null;
+        let currentSVG = null;
+        let isProcessing = false;
+
+        const showStatus = (message, type) => {
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+            setTimeout(() => {
+                if (status.textContent === message) {
+                    status.style.display = 'none';
+                }
+            }, 5000);
+        };
+
+        const updateProgressUI = (show, percent, text) => {
+            if (show) {
+                progressContainer.style.display = 'block';
+                progressFill.style.width = percent + '%';
+                progressText.textContent = text;
+            } else {
+                progressContainer.style.display = 'none';
+            }
+        };
+
+        // Pause/Resume Logic
+        pauseBtn.addEventListener('click', () => {
+            marchingWaves.pause();
+            pauseBtn.style.display = 'none';
+            resumeBtn.style.display = 'block';
+        });
+
+        resumeBtn.addEventListener('click', () => {
+            marchingWaves.resume();
+            resumeBtn.style.display = 'none';
+            pauseBtn.style.display = 'block';
+        });
+
+        // Selection Logic
+        selectionBtn.addEventListener('click', () => {
+            if (selectionManager.enabled) {
+                selectionManager.disable();
+                selectionBtn.textContent = 'Select Area to Rerun';
+                selectionBtn.classList.remove('btn-primary');
+                selectionBtn.classList.add('btn-secondary');
+            } else {
+                selectionManager.enable();
+                selectionBtn.textContent = 'Cancel Selection';
+                selectionBtn.classList.remove('btn-secondary');
+                selectionBtn.classList.add('btn-primary');
+                showStatus('Click and drag on the canvas to select an area', 'info');
+            }
+        });
+
+        rerunBtn.addEventListener('click', async () => {
+            if (!selectionManager.selection || isProcessing) return;
+            
+            isProcessing = true;
+            generateBtn.disabled = true;
+            rerunBtn.disabled = true;
+            selectionManager.disable(); // Hide selection during processing
+            selectionBtn.style.display = 'none';
+            cancelBtnContainer.classList.add('visible');
+            pauseBtn.style.display = 'block';
+            resumeBtn.style.display = 'none';
+
+            const options = {
+                mode: document.getElementById('modeSelect').value,
+                interval: parseFloat(document.getElementById('interval').value),
+                lineWidth: parseFloat(document.getElementById('lineWidth').value),
+                threshold: parseFloat(document.getElementById('threshold').value),
+                invert: document.getElementById('invert').checked,
+                lineColor: document.getElementById('lineColor').value,
+                antiAlias: document.getElementById('antiAlias').checked,
+                maxSegments: parseInt(document.getElementById('maxSegments').value),
+                skipJoining: document.getElementById('skipJoining').checked,
+                showProgress: document.getElementById('showProgress').checked,
+                // ... adaptive params ...
+                edgeGuidance: document.getElementById('edgeGuidance').checked,
+                edgeSensitivity: parseFloat(document.getElementById('edgeSensitivity').value),
+                detailLevel: parseFloat(document.getElementById('detailLevel').value),
+                contourSmoothness: parseFloat(document.getElementById('contourSmoothness').value),
+                featureImportance: parseFloat(document.getElementById('featureImportance').value),
+                // Pass optimization params too
+                simplification: presets[document.getElementById('presetSelect').value]?.simplification,
+                splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
+                optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath
+            };
+
+            marchingWaves.setProgressCallback(updateProgressUI);
+
+            try {
+                currentSVG = await marchingWaves.rerunRegion(selectionManager.selection, options);
+                showStatus('Region updated successfully!', 'success');
+            } catch (error) {
+                if (error.message === 'Cancelled by user') {
+                    showStatus('Operation cancelled', 'warning');
+                    // Restore previous state if possible or just clear?
+                } else {
+                    console.error(error);
+                    showStatus('Error: ' + error.message, 'error');
+                }
+            } finally {
+                isProcessing = false;
+                generateBtn.disabled = false;
+                rerunBtn.disabled = false;
+                selectionBtn.style.display = 'block';
+                selectionBtn.textContent = 'Select Area to Rerun';
+                selectionBtn.classList.add('btn-secondary');
+                selectionBtn.classList.remove('btn-primary');
+                rerunBtn.style.display = 'none'; // Hide rerun button after run
+                cancelBtnContainer.classList.remove('visible');
+                progressContainer.style.display = 'none';
+            }
+        });
+
+        const presets = {
+            'topo-map': {
+                mode: 'contours',
+                interval: 12,
+                lineWidth: 1.0,
+                threshold: 50,
+                lineColor: '#1a1a1a',
+                invert: true,
+                edgeGuidance: false,
+                contourSmoothness: 0.85
+            },
+            'blueprint': {
+                mode: 'contours',
+                interval: 8,
+                lineWidth: 0.8,
+                threshold: 45,
+                lineColor: '#0055ff',
+                invert: true,
+                edgeGuidance: true,
+                edgeSensitivity: 0.8
+            },
+            'flowing-silk': {
+                mode: 'streamlines',
+                interval: 6,
+                lineWidth: 0.8,
+                threshold: 45,
+                lineColor: '#1a1a2e',
+                invert: true,
+                contourSmoothness: 0.95
+            },
+            'marble-flow': {
+                mode: 'streamlines',
+                interval: 10,
+                lineWidth: 1.5,
+                threshold: 50,
+                lineColor: '#2c3e50',
+                invert: true,
+                contourSmoothness: 0.8
+            },
+            'ink-stipple': {
+                mode: 'stipple',
+                interval: 10,
+                lineWidth: 1.0,
+                threshold: 40,
+                lineColor: '#000000',
+                invert: true
+            },
+            'tangled-string': {
+                mode: 'tsp',
+                interval: 8,
+                lineWidth: 0.5,
+                threshold: 55,
+                lineColor: '#000000',
+                invert: true
+            }
+        };
+
+        const applyPreset = (presetName) => {
+            const preset = presets[presetName];
+            if (!preset) return;
+
+            if (preset.mode) {
+                document.getElementById('modeSelect').value = preset.mode;
+                // Trigger change event to update labels
+                document.getElementById('modeSelect').dispatchEvent(new Event('change'));
+            }
+
+            document.getElementById('interval').value = preset.interval;
+            document.getElementById('intervalValue').textContent = preset.interval;
+
+            document.getElementById('lineWidth').value = preset.lineWidth;
+            document.getElementById('lineWidthValue').textContent = preset.lineWidth.toFixed(1);
+
+            document.getElementById('threshold').value = preset.threshold;
+            document.getElementById('thresholdValue').textContent = preset.threshold;
+
+            document.getElementById('lineColor').value = preset.lineColor;
+
+            document.getElementById('invert').checked = preset.invert;
+            document.getElementById('antiAlias').checked = preset.antiAlias;
+            document.getElementById('maxSegments').value = preset.maxSegments;
+            document.getElementById('maxSegValue').textContent = preset.maxSegments;
+
+            // Apply new adaptive contour parameters if they exist
+            if (preset.edgeGuidance !== undefined) {
+                document.getElementById('edgeGuidance').checked = preset.edgeGuidance;
+                document.getElementById('edgeSensitivity').value = preset.edgeSensitivity;
+                document.getElementById('edgeSensitivityValue').textContent = preset.edgeSensitivity.toFixed(2);
+                document.getElementById('detailLevel').value = preset.detailLevel;
+                document.getElementById('detailLevelValue').textContent = preset.detailLevel.toFixed(2);
+                document.getElementById('contourSmoothness').value = preset.contourSmoothness;
+                document.getElementById('contourSmoothnessValue').textContent = preset.contourSmoothness.toFixed(2);
+                document.getElementById('featureImportance').value = preset.featureImportance;
+                document.getElementById('featureImportanceValue').textContent = preset.featureImportance.toFixed(2);
+            }
+
+            const presetLabel = document.getElementById('presetSelect').options[document.getElementById('presetSelect').selectedIndex].text;
+            showStatus(`Applied preset: ${presetLabel}`, 'info');
+        };
+
+        document.getElementById('presetSelect').addEventListener('change', (e) => {
+            const presetName = e.target.value;
+            if (presetName !== 'custom') {
+                applyPreset(presetName);
+            }
+        });
+
+        document.getElementById('modeSelect').addEventListener('change', (e) => {
+            const mode = e.target.value;
+            const intervalLabel = document.querySelector('label[for="interval"]') || document.querySelector('.control-group label');
+            // Find the label for interval - it's the first one in Parameters
+            const labels = document.querySelectorAll('.panel:nth-child(2) .control-group label');
+            if (labels[0]) {
+                labels[0].textContent = mode === 'streamlines' ? 'Streamline Spacing' : 
+                                        mode === 'stipple' || mode === 'tsp' ? 'Point Density' : 'Contour Interval';
+            }
+            
+            // Show/Hide adaptive panels
+            const adaptivePanel = document.querySelectorAll('.panel')[2];
+            const performancePanel = document.querySelectorAll('.panel')[4];
+            
+            if (mode === 'streamlines' || mode === 'stipple' || mode === 'tsp') {
+                adaptivePanel.style.display = 'none';
+                // For performance, stipple/tsp don't use maxSegments the same way
+                document.getElementById('maxSegments').closest('.control-group').style.display = 'none';
+                document.getElementById('skipJoining').closest('.checkbox-group').style.display = 'none';
+            } else {
+                adaptivePanel.style.display = 'block';
+                document.getElementById('maxSegments').closest('.control-group').style.display = 'block';
+                document.getElementById('skipJoining').closest('.checkbox-group').style.display = 'block';
+            }
+        });
+
+        const generateSamplePattern = () => {
+            const canvas = document.createElement('canvas');
+            const size = 200;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const maxRadius = size / 2 - 10;
+
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const dx = x - centerX;
+                    const dy = y - centerY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    let value;
+                    if (distance > maxRadius) {
+                        value = 1;
+                    } else {
+                        value = distance / maxRadius;
+                        value = Math.pow(value, 0.5);
+                    }
+
+                    const brightness = Math.floor((1 - value) * 255);
+                    ctx.fillStyle = `rgb(${brightness}, ${brightness}, ${brightness})`;
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+
+            const img = new Image();
+            img.src = canvas.toDataURL();
+            return img;
+        };
+
+        sampleBtn.addEventListener('click', () => {
+            const sampleImg = generateSamplePattern();
+            sampleImg.onload = () => {
+                currentImage = sampleImg;
+                dropPreview.src = sampleImg.src;
+                dropPreview.style.display = 'block';
+                placeholder.style.display = 'none';
+                previewContainer.classList.add('has-image');
+                canvasContainer.style.display = 'none';
+                generateBtn.disabled = false;
+                exportBtn.disabled = true;
+                showStatus('Sample pattern loaded', 'info');
+            };
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            marchingWaves.cancel();
+            showStatus('Cancelling...', 'warning');
+        });
+
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                loadImage(file);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadImage(file);
+            }
+        });
+
+        const loadImage = (file) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+                    dropPreview.src = e.target.result;
+                    dropPreview.style.display = 'block';
+                    placeholder.style.display = 'none';
+                    previewContainer.classList.add('has-image');
+                    canvasContainer.style.display = 'none';
+                    generateBtn.disabled = false;
+                    exportBtn.disabled = true;
+                    showStatus('Image loaded successfully', 'success');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        debugMode.addEventListener('change', (e) => {
+            const enabled = e.target.checked;
+            vizModeGroup.style.display = enabled ? 'block' : 'none';
+            originGroup.style.display = enabled ? 'flex' : 'none';
+            gridGroup.style.display = enabled ? 'flex' : 'none';
+            perfGroup.style.display = enabled ? 'flex' : 'none';
+            perfStats.classList.toggle('visible', enabled && document.getElementById('showPerf').checked);
+        });
+
+        // New adaptive contour control listeners
+        document.getElementById('edgeGuidance').addEventListener('change', (e) => {
+            document.getElementById('edgeSensitivity').disabled = !e.target.checked;
+        });
+
+        document.getElementById('edgeSensitivity').addEventListener('input', (e) => {
+            document.getElementById('edgeSensitivityValue').textContent = parseFloat(e.target.value).toFixed(2);
+        });
+
+        document.getElementById('detailLevel').addEventListener('input', (e) => {
+            document.getElementById('detailLevelValue').textContent = parseFloat(e.target.value).toFixed(2);
+        });
+
+        document.getElementById('contourSmoothness').addEventListener('input', (e) => {
+            document.getElementById('contourSmoothnessValue').textContent = parseFloat(e.target.value).toFixed(2);
+        });
+
+        document.getElementById('featureImportance').addEventListener('input', (e) => {
+            document.getElementById('featureImportanceValue').textContent = parseFloat(e.target.value).toFixed(2);
+        });
+
+        document.getElementById('showPerf').addEventListener('change', (e) => {
+            perfStats.classList.toggle('visible', e.target.checked);
+        });
+
+        generateBtn.addEventListener('click', async () => {
+            if (!currentImage || isProcessing) return;
+
+            isProcessing = true;
+            generateBtn.disabled = true;
+            cancelBtnContainer.classList.add('visible');
+            pauseBtn.style.display = 'block';
+            resumeBtn.style.display = 'none';
+            selectionManager.clear(); // Clear any previous selection
+            selectionBtn.style.display = 'none'; // Hide during generation
+            exportBtn.disabled = true;
+            progressContainer.style.display = 'block';
+
+            const options = {
+                mode: document.getElementById('modeSelect').value,
+                interval: parseFloat(document.getElementById('interval').value),
+                lineWidth: parseFloat(document.getElementById('lineWidth').value),
+                threshold: parseFloat(document.getElementById('threshold').value),
+                invert: document.getElementById('invert').checked,
+                lineColor: document.getElementById('lineColor').value,
+                antiAlias: document.getElementById('antiAlias').checked,
+                maxSegments: parseInt(document.getElementById('maxSegments').value),
+                skipJoining: document.getElementById('skipJoining').checked,
+                showProgress: document.getElementById('showProgress').checked,
+                debugMode: debugMode.checked,
+                vizMode: document.getElementById('vizMode').value,
+                showOrigins: document.getElementById('showOrigins').checked,
+                showGrid: document.getElementById('showGrid').checked,
+                livePreview: document.getElementById('livePreview').checked,
+                useGPU: document.getElementById('useGPU').checked,
+                // New adaptive contour parameters
+                edgeGuidance: document.getElementById('edgeGuidance').checked,
+                edgeSensitivity: parseFloat(document.getElementById('edgeSensitivity').value),
+                detailLevel: parseFloat(document.getElementById('detailLevel').value),
+                contourSmoothness: parseFloat(document.getElementById('contourSmoothness').value),
+                featureImportance: parseFloat(document.getElementById('featureImportance').value),
+                // Pass optimization params too
+                simplification: presets[document.getElementById('presetSelect').value]?.simplification,
+                splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
+                optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath
+            };
+
+            marchingWaves.setProgressCallback(updateProgressUI);
+
+            try {
+                currentSVG = await marchingWaves.processImage(currentImage, options);
+
+                dropPreview.style.display = 'none';
+                canvasContainer.style.display = 'block';
+                selectionBtn.style.display = 'block'; // Show after generation
+                
+                if (!debugMode.checked || options.vizMode === 'final') {
+                    exportBtn.disabled = false;
+                }
+
+                if (marchingWaves.perf && Object.keys(marchingWaves.perf).length > 0) {
+                    let statsText = 'Performance:\n';
+                    for (const [key, value] of Object.entries(marchingWaves.perf)) {
+                        statsText += `${key}: ${value}${typeof value === 'number' ? 'ms' : ''}\n`;
+                    }
+                    perfStats.textContent = statsText;
+                }
+
+                const modeName = debugMode.checked ? options.vizMode : 'final';
+                showStatus(`Artwork generated (${modeName} view)`, 'success');
+            } catch (error) {
+                if (error.message === 'Cancelled by user') {
+                    showStatus('Operation cancelled', 'warning');
+                } else {
+                    console.error(error);
+                    showStatus('Error: ' + error.message, 'error');
+                }
+            } finally {
+                isProcessing = false;
+                generateBtn.disabled = false;
+                cancelBtnContainer.classList.remove('visible');
+                if (!exportBtn.disabled) {
+                    progressContainer.style.display = 'none';
+                }
+            }
+        });
+
+        exportBtn.addEventListener('click', () => {
+            if (!currentSVG) return;
+
+            const blob = new Blob([currentSVG], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'marching-waves.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showStatus('SVG exported successfully!', 'success');
+        });
+
+        clearBtn.addEventListener('click', () => {
+            if (isProcessing) {
+                marchingWaves.cancel();
+            }
+            currentImage = null;
+            currentSVG = null;
+            dropPreview.src = '';
+            dropPreview.style.display = 'none';
+            placeholder.style.display = 'block';
+            previewContainer.classList.remove('has-image');
+            canvasContainer.style.display = 'none';
+            generateBtn.disabled = true;
+            exportBtn.disabled = true;
+            fileInput.value = '';
+            progressContainer.style.display = 'none';
+            status.style.display = 'none';
+            marchingWaves.perf = {};
+            perfStats.textContent = '';
+        });
+
+        document.getElementById('interval').addEventListener('input', (e) => {
+            document.getElementById('intervalValue').textContent = e.target.value;
+        });
+
+        document.getElementById('lineWidth').addEventListener('input', (e) => {
+            document.getElementById('lineWidthValue').textContent = parseFloat(e.target.value).toFixed(1);
+        });
+
+        document.getElementById('threshold').addEventListener('input', (e) => {
+            document.getElementById('thresholdValue').textContent = e.target.value;
+        });
+
+        document.getElementById('maxSegments').addEventListener('input', (e) => {
+            document.getElementById('maxSegValue').textContent = e.target.value;
+        });
+
+        // Info icon tooltip handling for touch devices
+        (function initInfoIcons() {
+            const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+            if (isTouchDevice) {
+                const infoIcons = document.querySelectorAll('.info-icon');
+                let currentActiveIcon = null;
+
+                infoIcons.forEach(icon => {
+                    icon.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        // Toggle active state
+                        if (currentActiveIcon && currentActiveIcon !== this) {
+                            currentActiveIcon.classList.remove('active');
+                        }
+
+                        this.classList.toggle('active');
+                        currentActiveIcon = this.classList.contains('active') ? this : null;
+                    });
+                });
+
+                // Close tooltip when clicking outside
+                document.addEventListener('click', function(e) {
+                    if (currentActiveIcon && !e.target.classList.contains('info-icon')) {
+                        currentActiveIcon.classList.remove('active');
+                        currentActiveIcon = null;
+                    }
+                });
+            }
+
+            // Keyboard accessibility
+            const infoIcons = document.querySelectorAll('.info-icon');
+            infoIcons.forEach(icon => {
+                icon.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (isTouchDevice) {
+                            this.click();
+                        }
+                    }
+                    if (e.key === 'Escape') {
+                        this.classList.remove('active');
+                        this.blur();
+                    }
+                });
+            });
+        })();
+    </script>
+</body>
+</html>

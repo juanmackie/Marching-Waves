@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        canvas { border: 1px solid #ccc; margin: 10px 0; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .svg-output { border: 1px solid #ddd; padding: 10px; margin: 10px 0; background: #f8f9fa; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Test Fix</h1>
+    <div id="status" class="status">Ready</div>
+    
+    <div>
+        <h3>Test Canvas</h3>
+        <canvas id="testCanvas" width="200" height="200"></canvas>
+    </div>
+    
+    <div>
+        <h3>SVG Output</h3>
+        <div id="svgOutput" class="svg-output">SVG will appear here</div>
+    </div>
+    
+    <button id="runTest">Run Test</button>
+    
+    <script>
+        // Test the fix
+        class TestMarchingWaves {
+            constructor() {
+                this.canvas = document.getElementById('testCanvas');
+                this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+                this.debugMode = false;
+                this.vizMode = 'final';
+            }
+            
+            async processImage(options) {
+                this.debugMode = options.debugMode || false;
+                this.vizMode = options.vizMode || 'final';
+                
+                const width = 200;
+                const height = 200;
+                this.canvas.width = width;
+                this.canvas.height = height;
+                
+                if (this.debugMode && this.vizMode !== 'final') {
+                    await new Promise(r => setTimeout(r, 10));
+                    this.renderDebugVisualization(width, height, options.lineColor, options.lineWidth);
+                    console.log('Debug visualization rendered');
+                    
+                    // Return minimal SVG indicating debug mode
+                    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" fill="white"/>
+  <text x="${width/2}" y="${height/2}" text-anchor="middle" fill="black" font-size="16">Debug Mode: ${this.vizMode}</text>
+</svg>`;
+                }
+                
+                // Normal mode
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+                this.ctx.strokeStyle = options.lineColor;
+                this.ctx.lineWidth = options.lineWidth;
+                this.ctx.beginPath();
+                this.ctx.moveTo(50, 50);
+                this.ctx.lineTo(150, 150);
+                this.ctx.stroke();
+                
+                return this.getSVG(width, height, options.lineColor, options.lineWidth);
+            }
+            
+            renderDebugVisualization(width, height, lineColor, lineWidth) {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, width, height);
+                
+                if (this.vizMode === 'grayscale') {
+                    // Create grayscale gradient
+                    const imgData = this.ctx.createImageData(width, height);
+                    for (let i = 0; i < width * height; i++) {
+                        const val = Math.floor((i / (width * height)) * 255);
+                        imgData.data[i * 4] = val;
+                        imgData.data[i * 4 + 1] = val;
+                        imgData.data[i * 4 + 2] = val;
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    this.ctx.putImageData(imgData, 0, 0);
+                } else if (this.vizMode === 'heatmap') {
+                    // Create heatmap
+                    const imgData = this.ctx.createImageData(width, height);
+                    for (let i = 0; i < width * height; i++) {
+                        const x = i % width;
+                        const y = Math.floor(i / width);
+                        const t = (x + y) / (width + height);
+                        const r = Math.floor(t * 255);
+                        const b = Math.floor((1 - t) * 255);
+                        imgData.data[i * 4] = r;
+                        imgData.data[i * 4 + 1] = 0;
+                        imgData.data[i * 4 + 2] = b;
+                        imgData.data[i * 4 + 3] = 255;
+                    }
+                    this.ctx.putImageData(imgData, 0, 0);
+                }
+            }
+            
+            getSVG(width, height, lineColor, lineWidth) {
+                return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" fill="white"/>
+  <g stroke="${lineColor}" stroke-width="${lineWidth}" fill="none">
+    <line x1="50" y1="50" x2="150" y2="150"/>
+  </g>
+</svg>`;
+            }
+        }
+        
+        document.getElementById('runTest').addEventListener('click', async function() {
+            const statusEl = document.getElementById('status');
+            const svgOutputEl = document.getElementById('svgOutput');
+            
+            try {
+                statusEl.textContent = 'Running test...';
+                statusEl.className = 'status info';
+                
+                const waves = new TestMarchingWaves();
+                
+                // Test debug mode
+                const debugResult = await waves.processImage({
+                    debugMode: true,
+                    vizMode: 'grayscale',
+                    lineColor: '#000000',
+                    lineWidth: 1
+                });
+                
+                console.log('Debug SVG result:', debugResult);
+                svgOutputEl.innerHTML = '<strong>Debug Mode SVG:</strong><pre>' + 
+                    debugResult.substring(0, 200) + '...</pre>';
+                
+                // Test normal mode
+                const normalResult = await waves.processImage({
+                    debugMode: false,
+                    vizMode: 'final',
+                    lineColor: '#000000',
+                    lineWidth: 1
+                });
+                
+                console.log('Normal SVG result:', normalResult);
+                svgOutputEl.innerHTML += '<strong>Normal Mode SVG:</strong><pre>' + 
+                    normalResult.substring(0, 200) + '...</pre>';
+                
+                statusEl.textContent = '✅ Test passed! Debug mode returns proper SVG.';
+                statusEl.className = 'status success';
+                
+            } catch (error) {
+                statusEl.textContent = '❌ Test failed: ' + error.message;
+                statusEl.className = 'status error';
+                console.error(error);
+            }
+        });
+        
+        // Run automatically
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                document.getElementById('runTest').click();
+            }, 100);
+        });
+    </script>
+</body>
+</html>

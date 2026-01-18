@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .test-container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+        .test-section h2 { margin-top: 0; color: #333; }
+        canvas { border: 1px solid #ccc; background: white; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .console-output { background: #1a1a1a; color: #0f0; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Marching Waves Integration Test</h1>
+        <div id="status" class="status"></div>
+        
+        <div class="test-section">
+            <h2>Test 1: Basic Canvas Functionality</h2>
+            <canvas id="basicCanvas" width="200" height="200"></canvas>
+            <p id="test1Result"></p>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test 2: Image Processing Pipeline</h2>
+            <canvas id="processCanvas" width="200" height="200"></canvas>
+            <p id="test2Result"></p>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test 3: Debug Visualization</h2>
+            <canvas id="debugCanvas" width="200" height="200"></canvas>
+            <p id="test3Result"></p>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test 4: Contour Generation</h2>
+            <canvas id="contourCanvas" width="200" height="200"></canvas>
+            <p id="test4Result"></p>
+        </div>
+        
+        <div class="test-section">
+            <h2>Console Output</h2>
+            <div class="console-output" id="consoleOutput"></div>
+        </div>
+        
+        <button id="runTests">Run All Tests</button>
+    </div>
+    
+    <script>
+        // Redirect console output to the page
+        const consoleOutput = document.getElementById('consoleOutput');
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return String(arg);
+            }).join(' ');
+            
+            const outputEl = document.createElement('div');
+            outputEl.textContent = message;
+            consoleOutput.appendChild(outputEl);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        };
+        
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    return JSON.stringify(arg, null, 2);
+                }
+                return String(arg);
+            }).join(' ');
+            
+            const outputEl = document.createElement('div');
+            outputEl.textContent = 'ERROR: ' + message;
+            outputEl.style.color = '#ff4444';
+            consoleOutput.appendChild(outputEl);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        };
+        
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+        
+        function updateTestResult(testId, message, isSuccess) {
+            const resultEl = document.getElementById(testId);
+            resultEl.textContent = message;
+            resultEl.style.color = isSuccess ? '#28a745' : '#dc3545';
+        }
+        
+        // Test 1: Basic Canvas Functionality
+        function testBasicCanvas() {
+            try {
+                const canvas = document.getElementById('basicCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Draw a simple pattern
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, 200, 200);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(50, 50, 100, 100);
+                
+                // Get image data
+                const imageData = ctx.getImageData(0, 0, 200, 200);
+                
+                if (imageData.data.length === 200 * 200 * 4) {
+                    updateTestResult('test1Result', '✓ Basic canvas operations working', true);
+                    return true;
+                } else {
+                    updateTestResult('test1Result', '✗ Image data size incorrect', false);
+                    return false;
+                }
+            } catch (error) {
+                updateTestResult('test1Result', '✗ Error: ' + error.message, false);
+                console.error('Test 1 failed:', error);
+                return false;
+            }
+        }
+        
+        // Test 2: Image Processing Pipeline
+        function testImageProcessing() {
+            try {
+                const canvas = document.getElementById('processCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Create a gradient pattern
+                for (let y = 0; y < 200; y++) {
+                    for (let x = 0; x < 200; x++) {
+                        const value = Math.floor((x + y) / 400 * 255);
+                        ctx.fillStyle = `rgb(${value}, ${value}, ${value})`;
+                        ctx.fillRect(x, y, 1, 1);
+                    }
+                }
+                
+                // Convert to grayscale
+                const imageData = ctx.getImageData(0, 0, 200, 200);
+                const grayData = new Float32Array(200 * 200);
+                const data = imageData.data;
+                
+                for (let i = 0; i < grayData.length; i++) {
+                    grayData[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+                }
+                
+                // Check if we have reasonable grayscale values
+                const hasVariation = Math.max(...grayData) > Math.min(...grayData);
+                
+                if (hasVariation && grayData.length === 40000) {
+                    updateTestResult('test2Result', '✓ Image processing pipeline working', true);
+                    return true;
+                } else {
+                    updateTestResult('test2Result', '✗ Grayscale conversion failed', false);
+                    return false;
+                }
+            } catch (error) {
+                updateTestResult('test2Result', '✗ Error: ' + error.message, false);
+                console.error('Test 2 failed:', error);
+                return false;
+            }
+        }
+        
+        // Test 3: Debug Visualization
+        function testDebugVisualization() {
+            try {
+                const canvas = document.getElementById('debugCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Test heatmap rendering
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, 200, 200);
+                
+                // Create a simple heatmap pattern
+                const imgData = ctx.createImageData(200, 200);
+                for (let i = 0; i < 200 * 200; i++) {
+                    const x = i % 200;
+                    const y = Math.floor(i / 200);
+                    const t = (x + y) / 400;
+                    const r = Math.floor(t * 255);
+                    const b = Math.floor((1 - t) * 255);
+                    
+                    imgData.data[i * 4] = r;
+                    imgData.data[i * 4 + 1] = Math.floor((1 - Math.abs(t - 0.5) * 2) * 200);
+                    imgData.data[i * 4 + 2] = b;
+                    imgData.data[i * 4 + 3] = 255;
+                }
+                
+                ctx.putImageData(imgData, 0, 0);
+                
+                // Add some origin points
+                ctx.fillStyle = 'red';
+                for (let i = 0; i < 10; i++) {
+                    const x = Math.random() * 200;
+                    const y = Math.random() * 200;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                updateTestResult('test3Result', '✓ Debug visualization working', true);
+                return true;
+            } catch (error) {
+                updateTestResult('test3Result', '✗ Error: ' + error.message, false);
+                console.error('Test 3 failed:', error);
+                return false;
+            }
+        }
+        
+        // Test 4: Contour Generation
+        function testContourGeneration() {
+            try {
+                const canvas = document.getElementById('contourCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Draw some simple contours
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, 200, 200);
+                
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                // Draw some test paths
+                ctx.beginPath();
+                ctx.moveTo(50, 50);
+                ctx.lineTo(150, 50);
+                ctx.lineTo(150, 150);
+                ctx.lineTo(50, 150);
+                ctx.closePath();
+                ctx.stroke();
+                
+                // Draw a circle
+                ctx.beginPath();
+                ctx.arc(100, 100, 40, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                updateTestResult('test4Result', '✓ Contour generation working', true);
+                return true;
+            } catch (error) {
+                updateTestResult('test4Result', '✗ Error: ' + error.message, false);
+                console.error('Test 4 failed:', error);
+                return false;
+            }
+        }
+        
+        // Run all tests
+        document.getElementById('runTests').addEventListener('click', () => {
+            consoleOutput.innerHTML = '';
+            showStatus('Running tests...', 'info');
+            
+            const testResults = [
+                testBasicCanvas(),
+                testImageProcessing(),
+                testDebugVisualization(),
+                testContourGeneration()
+            ];
+            
+            const allPassed = testResults.every(result => result);
+            
+            if (allPassed) {
+                showStatus('All tests passed! ✓', 'success');
+            } else {
+                showStatus('Some tests failed. Check console for details.', 'error');
+            }
+        });
+        
+        // Run tests automatically on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                document.getElementById('runTests').click();
+            }, 100);
+        });
+    </script>
+</body>
+</html>

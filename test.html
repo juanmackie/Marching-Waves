@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Marching Waves</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        #testCanvas { border: 1px solid #ccc; margin: 20px 0; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>Marching Waves Test</h1>
+    <div id="status" class="status"></div>
+    
+    <h2>Test 1: Basic Functionality</h2>
+    <canvas id="testCanvas" width="200" height="200"></canvas>
+    
+    <h2>Test 2: Debug Visualization</h2>
+    <canvas id="debugCanvas" width="200" height="200"></canvas>
+    
+    <script>
+        // Test the core functionality
+        const statusEl = document.getElementById('status');
+        const testCanvas = document.getElementById('testCanvas');
+        const debugCanvas = document.getElementById('debugCanvas');
+        
+        function showStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+        
+        try {
+            // Test 1: Create a simple test image
+            const testCtx = testCanvas.getContext('2d');
+            testCtx.fillStyle = 'black';
+            testCtx.fillRect(0, 0, 200, 200);
+            testCtx.fillStyle = 'white';
+            testCtx.fillRect(50, 50, 100, 100);
+            
+            showStatus('Basic canvas functionality working', 'success');
+            
+            // Test 2: Test image data manipulation
+            const imageData = testCtx.getImageData(0, 0, 200, 200);
+            const grayData = new Float32Array(200 * 200);
+            const data = imageData.data;
+            
+            for (let i = 0; i < grayData.length; i++) {
+                grayData[i] = (0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2]) / 255;
+            }
+            
+            showStatus('Image processing working', 'success');
+            
+            // Test 3: Test debug canvas
+            const debugCtx = debugCanvas.getContext('2d');
+            debugCtx.fillStyle = '#ffffff';
+            debugCtx.fillRect(0, 0, 200, 200);
+            debugCtx.strokeStyle = '#000000';
+            debugCtx.lineWidth = 1;
+            debugCtx.beginPath();
+            debugCtx.moveTo(50, 50);
+            debugCtx.lineTo(150, 150);
+            debugCtx.stroke();
+            
+            showStatus('Debug visualization working', 'success');
+            
+        } catch (error) {
+            showStatus('Error: ' + error.message, 'error');
+            console.error(error);
+        }
+    </script>
+</body>
+</html>
