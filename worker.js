@@ -68,7 +68,7 @@ let pauseResolve = null;
 
 self.onmessage = function(e) {
     const { type, taskId, method, params, options } = e.data;
-    
+
     if (type === 'cancel') {
         isCancelled = true;
     } else if (type === 'pause') {
@@ -79,6 +79,9 @@ self.onmessage = function(e) {
             pauseResolve();
             pauseResolve = null;
         }
+    } else if (type === 'cleanup') {
+        // Cleanup memory after task completion
+        cleanupWorkerMemory();
     } else {
         // Regular task execution
         try {
@@ -1010,18 +1013,18 @@ function snapToEdge(x, y, level, edgeMap, solution, width, height, sensitivity, 
     let bestX = x;
     let bestY = y;
     let bestEdgeVal = 0;
-    
+
     const searchRadius = 3;
     for (let dy = -searchRadius; dy <= searchRadius; dy++) {
         for (let dx = -searchRadius; dx <= searchRadius; dx++) {
             const nx = x + dx;
             const ny = y + dy;
-            
+
             if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-            
+
             const idx = Math.floor(ny) * width + Math.floor(nx);
             const edgeVal = edgeMap ? edgeMap[idx] : 0;
-            
+
             if (edgeVal > bestEdgeVal) {
                 bestEdgeVal = edgeVal;
                 bestX = nx;
@@ -1029,9 +1032,31 @@ function snapToEdge(x, y, level, edgeMap, solution, width, height, sensitivity, 
             }
         }
     }
-    
+
     return {
         x: x + (bestX - x) * sensitivity,
         y: y + (bestY - y) * sensitivity
     };
+}
+
+// Cleanup function to free memory after task completion
+function cleanupWorkerMemory() {
+    // Clear cancellation state
+    isCancelled = false;
+    isPaused = false;
+
+    // Clear pause promise
+    if (pauseResolve) {
+        pauseResolve = null;
+    }
+
+    // Clear yield promise
+    if (yieldResolve) {
+        yieldResolve = null;
+    }
+
+    // Force garbage collection hint
+    if (typeof global !== 'undefined' && typeof global.gc === 'function') {
+        global.gc();
+    }
 }

@@ -9,6 +9,9 @@ class WorkerPool {
         this.activeTasks = new Map();
         this.taskIdCounter = 0;
         this.initialized = false;
+        this.idleWorkerCleanupInterval = 60000; // 60 seconds
+        this.minIdleWorkers = 1; // Keep at least 1 worker for quick startup
+        this.cleanupTimer = null;
     }
 
     async init() {
@@ -38,33 +41,48 @@ class WorkerPool {
                 worker.onmessage = (e) => {
                     const { type, taskId, percent, message, data, error, performance } = e.data;
                     const task = this.activeTasks.get(taskId);
-                    
+
                     if (!task) return;
-                    
+
+                    // Update worker activity timestamp
+                    worker.lastActive = Date.now();
+
                     switch (type) {
                         case 'progress':
                             if (task.onProgress) {
                                 task.onProgress(percent, message);
                             }
                             break;
-                            
+
                         case 'result':
                             // Mark task as complete
                             task.worker.taskCount--;
                             console.log(`Task ${taskId} completed, worker task count: ${task.worker.taskCount}`);
                             task.resolve({ data, performance });
                             this.activeTasks.delete(taskId);
-                            
+
+                            // Send cleanup message to worker to release memory
+                            worker.postMessage({ type: 'cleanup' });
+
+                            // Schedule idle worker cleanup
+                            this.scheduleCleanup();
+
                             // Process next task in queue
                             this.processQueue();
                             break;
-                            
+
                         case 'error':
                             task.worker.taskCount--;
                             console.error(`Task ${taskId} failed:`, error);
                             task.reject(new Error(error.message));
                             this.activeTasks.delete(taskId);
-                            
+
+                            // Send cleanup message to worker
+                            worker.postMessage({ type: 'cleanup' });
+
+                            // Schedule idle worker cleanup
+                            this.scheduleCleanup();
+
                             // Process next task in queue
                             this.processQueue();
                             break;
@@ -79,8 +97,9 @@ class WorkerPool {
                 worker.onload = () => {
                     console.log('Worker loaded successfully');
                 };
-                
+
                 worker.taskCount = 0;
+                worker.lastActive = Date.now();
                 this.workers.push(worker);
                 resolve(worker);
             } catch (error) {
@@ -238,6 +257,90 @@ class WorkerPool {
                 type: 'visibility',
                 isVisible: isVisible
             });
+            worker.lastActive = Date.now();
+        }
+    }
+
+    scheduleCleanup() {
+        if (this.cleanupTimer) {
+            clearTimeout(this.cleanupTimer);
+        }
+        this.cleanupTimer = setTimeout(() => {
+            this.cleanupIdleWorkers();
+        }, this.idleWorkerCleanupInterval);
+    }
+
+    cleanupIdleWorkers() {
+        const now = Date.now();
+        const activeWorkers = this.workers.filter(w => w.taskCount > 0).length;
+
+        // Keep at least minIdleWorkers + activeWorkers
+        const minWorkers = this.minIdleWorkers + activeWorkers;
+
+        if (this.workers.length <= minWorkers) {
+            console.log('Worker pool: No idle workers to terminate');
+            return;
+        }
+
+        // Find idle workers (no active tasks and idle longer than timeout)
+        const idleWorkers = this.workers.filter(w =>
+            w.taskCount === 0 && (now - w.lastActive) > this.idleWorkerCleanupInterval
+        );
+
+        const toTerminate = idleWorkers.slice(0, this.workers.length - minWorkers);
+
+        if (toTerminate.length > 0) {
+            console.log(`Terminating ${toTerminate.length} idle workers (active: ${activeWorkers}, total: ${this.workers.length})`);
+            for (const worker of toTerminate) {
+                try {
+                    worker.terminate();
+                    const index = this.workers.indexOf(worker);
+                    if (index > -1) {
+                        this.workers.splice(index, 1);
+                    }
+                } catch (error) {
+                    console.error('Error terminating worker:', error);
+                }
+            }
+        }
+    }
+
+    terminateIdleWorkers() {
+        // Force cleanup of all idle workers (called on page hide or manual trigger)
+        const now = Date.now();
+        const activeWorkers = this.workers.filter(w => w.taskCount > 0);
+
+        const idleWorkers = this.workers.filter(w => w.taskCount === 0);
+        const toTerminate = idleWorkers.slice(0, idleWorkers.length - this.minIdleWorkers);
+
+        if (toTerminate.length > 0) {
+            console.log(`Force terminating ${toTerminate.length} idle workers`);
+            for (const worker of toTerminate) {
+                try {
+                    worker.terminate();
+                } catch (error) {
+                    console.error('Error terminating worker:', error);
+                }
+            }
+            this.workers = [...activeWorkers, ...idleWorkers.slice(toTerminate.length)];
+        }
+    }
+
+    // Add memory pressure detection
+    checkMemoryPressure() {
+        if (typeof performance !== 'undefined' && performance.memory) {
+            const memory = performance.memory;
+            const usageRatio = memory.usedJSHeapSize / memory.jsHeapSizeLimit;
+
+            if (usageRatio > 0.8) {
+                console.warn('Memory pressure detected, cleaning up workers');
+                this.terminateIdleWorkers();
+
+                // Also suggest GC
+                if (typeof gc === 'function') {
+                    gc();
+                }
+            }
         }
     }
 }

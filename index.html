@@ -1049,211 +1049,225 @@
                 const pixelCount = width * height;
                 const inputBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
                 const outputBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-                
-                this.device.queue.writeBuffer(inputBuffer, 0, imageData.data);
 
-                const shaderCode = `
-                    @group(0) @binding(0) var<storage, read> input: array<u32>;
-                    @group(0) @binding(1) var<storage, read_write> output: array<f32>;
+                try {
+                    this.device.queue.writeBuffer(inputBuffer, 0, imageData.data);
 
-                    @compute @workgroup_size(256)
-                    fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                        let idx = id.x;
-                        if (idx >= ${pixelCount}u) { return; }
+                    const shaderCode = `
+                        @group(0) @binding(0) var<storage, read> input: array<u32>;
+                        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
 
-                        let pixel = input[idx];
-                        let r = f32((pixel >> 0u) & 0xFFu);
-                        let g = f32((pixel >> 8u) & 0xFFu);
-                        let b = f32((pixel >> 16u) & 0xFFu);
-                        
-                        output[idx] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+                        @compute @workgroup_size(256)
+                        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                            let idx = id.x;
+                            if (idx >= ${pixelCount}u) { return; }
+
+                            let pixel = input[idx];
+                            let r = f32((pixel >> 0u) & 0xFFu);
+                            let g = f32((pixel >> 8u) & 0xFFu);
+                            let b = f32((pixel >> 16u) & 0xFFu);
+
+                            output[idx] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+                        }
+                    `;
+
+                    const pipeline = this.createComputePipeline(shaderCode, 'main');
+                    const bindGroup = this.device.createBindGroup({
+                        layout: pipeline.getBindGroupLayout(0),
+                        entries: [
+                            { binding: 0, resource: { buffer: inputBuffer } },
+                            { binding: 1, resource: { buffer: outputBuffer } }
+                        ]
+                    });
+
+                    const workgroups = Math.ceil(pixelCount / 256);
+                    const commandEncoder = this.device.createCommandEncoder();
+                    await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
+                    this.device.queue.submit([commandEncoder.finish()]);
+
+                    const result = await this.readBuffer(outputBuffer, pixelCount * 4);
+
+                    return result;
+                } finally {
+                    // Always cleanup buffers, even on error
+                    try {
+                        inputBuffer.destroy();
+                        outputBuffer.destroy();
+                    } catch (e) {
+                        console.warn('Error cleaning up GPU buffers:', e);
                     }
-                `;
-
-                const pipeline = this.createComputePipeline(shaderCode, 'main');
-                const bindGroup = this.device.createBindGroup({
-                    layout: pipeline.getBindGroupLayout(0),
-                    entries: [
-                        { binding: 0, resource: { buffer: inputBuffer } },
-                        { binding: 1, resource: { buffer: outputBuffer } }
-                    ]
-                });
-
-                const workgroups = Math.ceil(pixelCount / 256);
-                const commandEncoder = this.device.createCommandEncoder();
-                await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
-                this.device.queue.submit([commandEncoder.finish()]);
-
-                const result = await this.readBuffer(outputBuffer, pixelCount * 4);
-
-                inputBuffer.destroy();
-                outputBuffer.destroy();
-
-                return result;
+                }
             }
 
             async runMarchingSquares(solutionData, width, height, interval, maxSegments) {
                 const cellsX = width - 1;
                 const cellsY = height - 1;
                 const cellCount = cellsX * cellsY;
-                
-                const solutionBuffer = this.createBuffer(width * height * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
-                this.device.queue.writeBuffer(solutionBuffer, 0, solutionData);
 
+                const solutionBuffer = this.createBuffer(width * height * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
                 const maxSegmentsPerCell = 2;
                 const segmentBuffer = this.createBuffer(cellCount * maxSegmentsPerCell * 4 * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
                 const countBuffer = this.createBuffer(4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
 
-                const shaderCode = `
-                    @group(0) @binding(0) var<storage, read> solution: array<f32>;
-                    @group(0) @binding(1) var<storage, read_write> segments: array<vec4<f32>>;
-                    @group(0) @binding(2) var<storage, read_write> segmentCount: atomic<u32>;
+                try {
+                    this.device.queue.writeBuffer(solutionBuffer, 0, solutionData);
 
-                    const INFINITY: f32 = 999999.0;
+                    const shaderCode = `
+                        @group(0) @binding(0) var<storage, read> solution: array<f32>;
+                        @group(0) @binding(1) var<storage, read_write> segments: array<vec4<f32>>;
+                        @group(0) @binding(2) var<storage, read_write> segmentCount: atomic<u32>;
 
-                    fn getSolution(x: u32, y: u32) -> f32 {
-                        if (x >= ${width}u || y >= ${height}u) { return INFINITY; }
-                        return solution[y * ${width}u + x];
-                    }
+                        const INFINITY: f32 = 999999.0;
 
-                    fn interp(v1: f32, v2: f32, level: f32) -> f32 {
-                        if (v1 == INFINITY || v2 == INFINITY) { return 0.5; }
-                        if (abs(v2 - v1) < 0.0001) { return 0.5; }
-                        return (level - v1) / (v2 - v1);
-                    }
-
-                    @compute @workgroup_size(256)
-                    fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                        let cellIdx = id.x;
-                        if (cellIdx >= ${cellCount}u) { return; }
-
-                        let x = cellIdx % ${cellsX}u;
-                        let y = cellIdx / ${cellsX}u;
-
-                        const v00 = getSolution(x, y);
-                        const v10 = getSolution(x + 1u, y);
-                        const v01 = getSolution(x, y + 1u);
-                        const v11 = getSolution(x + 1u, y + 1u);
-
-                        let minVal = v00;
-                        if (v10 < minVal && v10 != INFINITY) { minVal = v10; }
-                        if (v01 < minVal && v01 != INFINITY) { minVal = v01; }
-                        if (v11 < minVal && v11 != INFINITY) { minVal = v11; }
-
-                        let maxVal = v00;
-                        if (v10 > maxVal && v10 != INFINITY) { maxVal = v10; }
-                        if (v01 > maxVal && v01 != INFINITY) { maxVal = v01; }
-                        if (v11 > maxVal && v11 != INFINITY) { maxVal = v11; }
-
-                        if (minVal == INFINITY) { return; }
-
-                        var level = minVal + ${interval};
-                        let segmentIdx = cellIdx * 2u;
-
-                        while (level < maxVal) {
-                            let code = 0u;
-                            if (v00 >= level) { code |= 1u; }
-                            if (v10 >= level) { code |= 2u; }
-                            if (v01 >= level) { code |= 4u; }
-                            if (v11 >= level) { code |= 8u; }
-
-                            let i = atomicAdd(&segmentCount, 1u);
-                            if (i >= ${maxSegments}u) { return; }
-
-                            switch (code) {
-                                case 1u, 14u: {
-                                    let t = interp(v00, v10, level);
-                                    segments[i] = vec4<f32>(f32(x), f32(y) + t, f32(x) + 0.5, f32(y));
-                                }
-                                case 2u, 13u: {
-                                    let t = interp(v10, v11, level);
-                                    segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t);
-                                }
-                                case 3u, 12u: {
-                                    let t1 = interp(v00, v10, level);
-                                    let t2 = interp(v01, v11, level);
-                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 1.0, f32(y) + t2);
-                                }
-                                case 4u, 11u: {
-                                    let t = interp(v01, v11, level);
-                                    segments[i] = vec4<f32>(f32(x) + 0.5, f32(y) + 1.0, f32(x) + t, f32(y) + 1.0);
-                                }
-                                case 5u: {
-                                    let t1 = interp(v00, v10, level);
-                                    let t2 = interp(v01, v11, level);
-                                    let i = atomicAdd(&segmentCount, 1u);
-                                    if (i >= ${maxSegments}u) { return; }
-                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
-                                    let i2 = atomicAdd(&segmentCount, 1u);
-                                    if (i2 >= ${maxSegments}u) { return; }
-                                    segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + t2, f32(y) + 1.0);
-                                }
-                                case 6u, 9u: {
-                                    segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 0.5, f32(y) + 1.0);
-                                }
-                                case 7u, 8u: {
-                                    let t1 = interp(v00, v10, level);
-                                    let t2 = interp(v10, v11, level);
-                                    let i = atomicAdd(&segmentCount, 1u);
-                                    if (i >= ${maxSegments}u) { return; }
-                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
-                                    let i2 = atomicAdd(&segmentCount, 1u);
-                                    if (i2 >= ${maxSegments}u) { return; }
-                                    segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
-                                }
-                                case 10u: {
-                                    let t1 = interp(v00, v10, level);
-                                    let t2 = interp(v01, v11, level);
-                                    let i = atomicAdd(&segmentCount, 1u);
-                                    if (i >= ${maxSegments}u) { return; }
-                                    segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y));
-                                    let i2 = atomicAdd(&segmentCount, 1u);
-                                    if (i2 >= ${maxSegments}u) { return; }
-                                    segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
-                                }
-                                default: {}
-                            }
-
-                            level += ${interval};
+                        fn getSolution(x: u32, y: u32) -> f32 {
+                            if (x >= ${width}u || y >= ${height}u) { return INFINITY; }
+                            return solution[y * ${width}u + x];
                         }
-                    }
-                `;
 
-                const pipeline = this.createComputePipeline(shaderCode, 'main');
-                const bindGroup = this.device.createBindGroup({
-                    layout: pipeline.getBindGroupLayout(0),
-                    entries: [
-                        { binding: 0, resource: { buffer: solutionBuffer } },
-                        { binding: 1, resource: { buffer: segmentBuffer } },
-                        { binding: 2, resource: { buffer: countBuffer } }
-                    ]
-                });
+                        fn interp(v1: f32, v2: f32, level: f32) -> f32 {
+                            if (v1 == INFINITY || v2 == INFINITY) { return 0.5; }
+                            if (abs(v2 - v1) < 0.0001) { return 0.5; }
+                            return (level - v1) / (v2 - v1);
+                        }
 
-                const workgroups = Math.ceil(cellCount / 256);
-                const commandEncoder = this.device.createCommandEncoder();
-                await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
-                this.device.queue.submit([commandEncoder.finish()]);
+                        @compute @workgroup_size(256)
+                        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                            let cellIdx = id.x;
+                            if (cellIdx >= ${cellCount}u) { return; }
 
-                const countData = await this.readBuffer(countBuffer, 4);
-                const segmentCount = Math.min(countData[0], maxSegments);
-                
-                const segmentData = await this.readBuffer(segmentBuffer, segmentCount * 4 * 4);
+                            let x = cellIdx % ${cellsX}u;
+                            let y = cellIdx / ${cellsX}u;
 
-                const lines = [];
-                for (let i = 0; i < segmentCount; i++) {
-                    lines.push({
-                        x1: segmentData[i * 4],
-                        y1: segmentData[i * 4 + 1],
-                        x2: segmentData[i * 4 + 2],
-                        y2: segmentData[i * 4 + 3]
+                            const v00 = getSolution(x, y);
+                            const v10 = getSolution(x + 1u, y);
+                            const v01 = getSolution(x, y + 1u);
+                            const v11 = getSolution(x + 1u, y + 1u);
+
+                            let minVal = v00;
+                            if (v10 < minVal && v10 != INFINITY) { minVal = v10; }
+                            if (v01 < minVal && v01 != INFINITY) { minVal = v01; }
+                            if (v11 < minVal && v11 != INFINITY) { minVal = v11; }
+
+                            let maxVal = v00;
+                            if (v10 > maxVal && v10 != INFINITY) { maxVal = v10; }
+                            if (v01 > maxVal && v01 != INFINITY) { maxVal = v01; }
+                            if (v11 > maxVal && v11 != INFINITY) { maxVal = v11; }
+
+                            if (minVal == INFINITY) { return; }
+
+                            var level = minVal + ${interval};
+                            let segmentIdx = cellIdx * 2u;
+
+                            while (level < maxVal) {
+                                let code = 0u;
+                                if (v00 >= level) { code |= 1u; }
+                                if (v10 >= level) { code |= 2u; }
+                                if (v01 >= level) { code |= 4u; }
+                                if (v11 >= level) { code |= 8u; }
+
+                                let i = atomicAdd(&segmentCount, 1u);
+                                if (i >= ${maxSegments}u) { return; }
+
+                                switch (code) {
+                                    case 1u, 14u: {
+                                        let t = interp(v00, v10, level);
+                                        segments[i] = vec4<f32>(f32(x), f32(y) + t, f32(x) + 0.5, f32(y));
+                                    }
+                                    case 2u, 13u: {
+                                        let t = interp(v10, v11, level);
+                                        segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t);
+                                    }
+                                    case 3u, 12u: {
+                                        let t1 = interp(v00, v10, level);
+                                        let t2 = interp(v01, v11, level);
+                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 1.0, f32(y) + t2);
+                                    }
+                                    case 4u, 11u: {
+                                        let t = interp(v01, v11, level);
+                                        segments[i] = vec4<f32>(f32(x) + 0.5, f32(y) + 1.0, f32(x) + t, f32(y) + 1.0);
+                                    }
+                                    case 5u: {
+                                        let t1 = interp(v00, v10, level);
+                                        let t2 = interp(v01, v11, level);
+                                        let i = atomicAdd(&segmentCount, 1u);
+                                        if (i >= ${maxSegments}u) { return; }
+                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
+                                        let i2 = atomicAdd(&segmentCount, 1u);
+                                        if (i2 >= ${maxSegments}u) { return; }
+                                        segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + t2, f32(y) + 1.0);
+                                    }
+                                    case 6u, 9u: {
+                                        segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 0.5, f32(y) + 1.0);
+                                    }
+                                    case 7u, 8u: {
+                                        let t1 = interp(v00, v10, level);
+                                        let t2 = interp(v10, v11, level);
+                                        let i = atomicAdd(&segmentCount, 1u);
+                                        if (i >= ${maxSegments}u) { return; }
+                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
+                                        let i2 = atomicAdd(&segmentCount, 1u);
+                                        if (i2 >= ${maxSegments}u) { return; }
+                                        segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
+                                    }
+                                    case 10u: {
+                                        let t1 = interp(v00, v10, level);
+                                        let t2 = interp(v01, v11, level);
+                                        let i = atomicAdd(&segmentCount, 1u);
+                                        if (i >= ${maxSegments}u) { return; }
+                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y));
+                                        let i2 = atomicAdd(&segmentCount, 1u);
+                                        if (i2 >= ${maxSegments}u) { return; }
+                                        segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
+                                    }
+                                    default: {}
+                                }
+
+                                level += ${interval};
+                            }
+                        }
+                    `;
+
+                    const pipeline = this.createComputePipeline(shaderCode, 'main');
+                    const bindGroup = this.device.createBindGroup({
+                        layout: pipeline.getBindGroupLayout(0),
+                        entries: [
+                            { binding: 0, resource: { buffer: solutionBuffer } },
+                            { binding: 1, resource: { buffer: segmentBuffer } },
+                            { binding: 2, resource: { buffer: countBuffer } }
+                        ]
                     });
+
+                    const workgroups = Math.ceil(cellCount / 256);
+                    const commandEncoder = this.device.createCommandEncoder();
+                    await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
+                    this.device.queue.submit([commandEncoder.finish()]);
+
+                    const countData = await this.readBuffer(countBuffer, 4);
+                    const segmentCount = Math.min(countData[0], maxSegments);
+
+                    const segmentData = await this.readBuffer(segmentBuffer, segmentCount * 4 * 4);
+
+                    const lines = [];
+                    for (let i = 0; i < segmentCount; i++) {
+                        lines.push({
+                            x1: segmentData[i * 4],
+                            y1: segmentData[i * 4 + 1],
+                            x2: segmentData[i * 4 + 2],
+                            y2: segmentData[i * 4 + 3]
+                        });
+                    }
+
+                    return { lines, skippedJoining: segmentCount >= maxSegments };
+                } finally {
+                    // Always cleanup buffers, even on error
+                    try {
+                        solutionBuffer.destroy();
+                        segmentBuffer.destroy();
+                        countBuffer.destroy();
+                    } catch (e) {
+                        console.warn('Error cleaning up GPU buffers:', e);
+                    }
                 }
-
-                solutionBuffer.destroy();
-                segmentBuffer.destroy();
-                countBuffer.destroy();
-
-                return { lines, skippedJoining: segmentCount >= maxSegments };
             }
 
             async runEikonalJFA(grayscaleData, width, height, threshold, progressCallback) {
@@ -1266,229 +1280,235 @@
                 const distanceBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC);
                 const paramsBuffer = this.createBuffer(16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
 
-                // Upload grayscale data
-                this.device.queue.writeBuffer(grayscaleBuffer, 0, grayscaleData);
+                try {
+                    // Upload grayscale data
+                    this.device.queue.writeBuffer(grayscaleBuffer, 0, grayscaleData);
 
-                // JFA Initialization Shader - mark seed pixels
-                const initShaderCode = `
-                    @group(0) @binding(0) var<storage, read> grayscale: array<f32>;
-                    @group(0) @binding(1) var<storage, read_write> seeds: array<vec2<i32>>;
-                    @group(0) @binding(2) var<uniform> params: vec4<u32>;
+                    // JFA Initialization Shader - mark seed pixels
+                    const initShaderCode = `
+                        @group(0) @binding(0) var<storage, read> grayscale: array<f32>;
+                        @group(0) @binding(1) var<storage, read_write> seeds: array<vec2<i32>>;
+                        @group(0) @binding(2) var<uniform> params: vec4<u32>;
 
-                    @compute @workgroup_size(256)
-                    fn init_seeds(@builtin(global_invocation_id) id: vec3<u32>) {
-                        let idx = id.x;
-                        let width = params.x;
-                        let height = params.y;
-                        let pixelCount = width * height;
+                        @compute @workgroup_size(256)
+                        fn init_seeds(@builtin(global_invocation_id) id: vec3<u32>) {
+                            let idx = id.x;
+                            let width = params.x;
+                            let height = params.y;
+                            let pixelCount = width * height;
 
-                        if (idx >= pixelCount) { return; }
+                            if (idx >= pixelCount) { return; }
 
-                        let threshold = bitcast<f32>(params.z);
-                        let value = grayscale[idx];
+                            let threshold = bitcast<f32>(params.z);
+                            let value = grayscale[idx];
 
-                        if (value < threshold) {
-                            let x = i32(idx % width);
-                            let y = i32(idx / width);
-                            seeds[idx] = vec2<i32>(x, y);
-                        } else {
-                            seeds[idx] = vec2<i32>(-1, -1);
+                            if (value < threshold) {
+                                let x = i32(idx % width);
+                                let y = i32(idx / width);
+                                seeds[idx] = vec2<i32>(x, y);
+                            } else {
+                                seeds[idx] = vec2<i32>(-1, -1);
+                            }
                         }
-                    }
-                `;
+                    `;
 
-                // JFA Step Shader - propagate nearest seeds
-                const jfaShaderCode = `
-                    @group(0) @binding(0) var<storage, read> seeds_in: array<vec2<i32>>;
-                    @group(0) @binding(1) var<storage, read_write> seeds_out: array<vec2<i32>>;
-                    @group(0) @binding(2) var<uniform> params: vec4<u32>;
+                    // JFA Step Shader - propagate nearest seeds
+                    const jfaShaderCode = `
+                        @group(0) @binding(0) var<storage, read> seeds_in: array<vec2<i32>>;
+                        @group(0) @binding(1) var<storage, read_write> seeds_out: array<vec2<i32>>;
+                        @group(0) @binding(2) var<uniform> params: vec4<u32>;
 
-                    fn distance_sq(a: vec2<i32>, b: vec2<i32>) -> f32 {
-                        let dx = f32(a.x - b.x);
-                        let dy = f32(a.y - b.y);
-                        return dx * dx + dy * dy;
-                    }
-
-                    @compute @workgroup_size(16, 16)
-                    fn jfa_step(@builtin(global_invocation_id) id: vec3<u32>) {
-                        let x = i32(id.x);
-                        let y = i32(id.y);
-                        let w = i32(params.x);
-                        let h = i32(params.y);
-                        let step_size = i32(params.z);
-
-                        if (x >= w || y >= h) { return; }
-
-                        let idx = u32(y * w + x);
-                        let current_pos = vec2<i32>(x, y);
-                        var best_seed = seeds_in[idx];
-                        var best_dist = 1e10f;
-
-                        if (best_seed.x >= 0) {
-                            best_dist = distance_sq(current_pos, best_seed);
+                        fn distance_sq(a: vec2<i32>, b: vec2<i32>) -> f32 {
+                            let dx = f32(a.x - b.x);
+                            let dy = f32(a.y - b.y);
+                            return dx * dx + dy * dy;
                         }
 
-                        // Check 9 neighbors at step distance (including self)
-                        for (var dy = -1; dy <= 1; dy++) {
-                            for (var dx = -1; dx <= 1; dx++) {
-                                let nx = x + dx * step_size;
-                                let ny = y + dy * step_size;
+                        @compute @workgroup_size(16, 16)
+                        fn jfa_step(@builtin(global_invocation_id) id: vec3<u32>) {
+                            let x = i32(id.x);
+                            let y = i32(id.y);
+                            let w = i32(params.x);
+                            let h = i32(params.y);
+                            let step_size = i32(params.z);
 
-                                if (nx < 0 || nx >= w || ny < 0 || ny >= h) { continue; }
+                            if (x >= w || y >= h) { return; }
 
-                                let neighbor_idx = u32(ny * w + nx);
-                                let neighbor_seed = seeds_in[neighbor_idx];
+                            let idx = u32(y * w + x);
+                            let current_pos = vec2<i32>(x, y);
+                            var best_seed = seeds_in[idx];
+                            var best_dist = 1e10f;
 
-                                if (neighbor_seed.x >= 0) {
-                                    let dist = distance_sq(current_pos, neighbor_seed);
-                                    if (dist < best_dist) {
-                                        best_dist = dist;
-                                        best_seed = neighbor_seed;
+                            if (best_seed.x >= 0) {
+                                best_dist = distance_sq(current_pos, best_seed);
+                            }
+
+                            // Check 9 neighbors at step distance (including self)
+                            for (var dy = -1; dy <= 1; dy++) {
+                                for (var dx = -1; dx <= 1; dx++) {
+                                    let nx = x + dx * step_size;
+                                    let ny = y + dy * step_size;
+
+                                    if (nx < 0 || nx >= w || ny < 0 || ny >= h) { continue; }
+
+                                    let neighbor_idx = u32(ny * w + nx);
+                                    let neighbor_seed = seeds_in[neighbor_idx];
+
+                                    if (neighbor_seed.x >= 0) {
+                                        let dist = distance_sq(current_pos, neighbor_seed);
+                                        if (dist < best_dist) {
+                                            best_dist = dist;
+                                            best_seed = neighbor_seed;
+                                        }
                                     }
                                 }
                             }
+
+                            seeds_out[idx] = best_seed;
                         }
+                    `;
 
-                        seeds_out[idx] = best_seed;
-                    }
-                `;
+                    // Distance computation shader
+                    const distanceShaderCode = `
+                        @group(0) @binding(0) var<storage, read> seeds: array<vec2<i32>>;
+                        @group(0) @binding(1) var<storage, read_write> distance_field: array<f32>;
+                        @group(0) @binding(2) var<uniform> params: vec4<u32>;
 
-                // Distance computation shader
-                const distanceShaderCode = `
-                    @group(0) @binding(0) var<storage, read> seeds: array<vec2<i32>>;
-                    @group(0) @binding(1) var<storage, read_write> distance_field: array<f32>;
-                    @group(0) @binding(2) var<uniform> params: vec4<u32>;
+                        @compute @workgroup_size(256)
+                        fn compute_distance(@builtin(global_invocation_id) id: vec3<u32>) {
+                            let idx = id.x;
+                            let width = params.x;
+                            let height = params.y;
+                            let pixelCount = width * height;
 
-                    @compute @workgroup_size(256)
-                    fn compute_distance(@builtin(global_invocation_id) id: vec3<u32>) {
-                        let idx = id.x;
-                        let width = params.x;
-                        let height = params.y;
-                        let pixelCount = width * height;
+                            if (idx >= pixelCount) { return; }
 
-                        if (idx >= pixelCount) { return; }
+                            let x = i32(idx % width);
+                            let y = i32(idx / width);
+                            let seed = seeds[idx];
 
-                        let x = i32(idx % width);
-                        let y = i32(idx / width);
-                        let seed = seeds[idx];
-
-                        if (seed.x < 0) {
-                            distance_field[idx] = 999999.0;
-                        } else {
-                            let dx = f32(x - seed.x);
-                            let dy = f32(y - seed.y);
-                            distance_field[idx] = sqrt(dx * dx + dy * dy);
+                            if (seed.x < 0) {
+                                distance_field[idx] = 999999.0;
+                            } else {
+                                let dx = f32(x - seed.x);
+                                let dy = f32(y - seed.y);
+                                distance_field[idx] = sqrt(dx * dx + dy * dy);
+                            }
                         }
+                    `;
+
+                    // Create pipelines
+                    const initPipeline = this.createComputePipeline(initShaderCode, 'init_seeds');
+                    const jfaPipeline = this.createComputePipeline(jfaShaderCode, 'jfa_step');
+                    const distancePipeline = this.createComputePipeline(distanceShaderCode, 'compute_distance');
+
+                    // Step 1: Initialize seeds
+                    const initParams = new Uint32Array([width, height, new Float32Array([threshold]).buffer ? 0 : 0, 0]);
+                    const initParamsView = new DataView(initParams.buffer);
+                    initParamsView.setUint32(0, width, true);
+                    initParamsView.setUint32(4, height, true);
+                    initParamsView.setFloat32(8, threshold, true);
+                    initParamsView.setUint32(12, 0, true);
+                    this.device.queue.writeBuffer(paramsBuffer, 0, initParams);
+
+                    const initBindGroup = this.device.createBindGroup({
+                        layout: initPipeline.getBindGroupLayout(0),
+                        entries: [
+                            { binding: 0, resource: { buffer: grayscaleBuffer } },
+                            { binding: 1, resource: { buffer: seedsBufferA } },
+                            { binding: 2, resource: { buffer: paramsBuffer } }
+                        ]
+                    });
+
+                    let commandEncoder = this.device.createCommandEncoder();
+                    let passEncoder = commandEncoder.beginComputePass();
+                    passEncoder.setPipeline(initPipeline);
+                    passEncoder.setBindGroup(0, initBindGroup);
+                    passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
+                    passEncoder.end();
+                    this.device.queue.submit([commandEncoder.finish()]);
+
+                    // Step 2: JFA passes (ping-pong between buffers)
+                    const maxDim = Math.max(width, height);
+                    let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
+                    let readBuffer = seedsBufferA;
+                    let writeBuffer = seedsBufferB;
+                    let passCount = 0;
+                    const totalPasses = Math.ceil(Math.log2(maxDim));
+
+                    // Batch all JFA passes into a single command submission for max performance
+                    while (stepSize >= 1) {
+                        // Update params with step size
+                        const jfaParams = new Uint32Array([width, height, stepSize, 0]);
+                        this.device.queue.writeBuffer(paramsBuffer, 0, jfaParams);
+
+                        const jfaBindGroup = this.device.createBindGroup({
+                            layout: jfaPipeline.getBindGroupLayout(0),
+                            entries: [
+                                { binding: 0, resource: { buffer: readBuffer } },
+                                { binding: 1, resource: { buffer: writeBuffer } },
+                                { binding: 2, resource: { buffer: paramsBuffer } }
+                            ]
+                        });
+
+                        commandEncoder = this.device.createCommandEncoder();
+                        passEncoder = commandEncoder.beginComputePass();
+                        passEncoder.setPipeline(jfaPipeline);
+                        passEncoder.setBindGroup(0, jfaBindGroup);
+                        passEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
+                        passEncoder.end();
+                        this.device.queue.submit([commandEncoder.finish()]);
+
+                        // NO sync here - let GPU queue all passes!
+
+                        // Swap buffers
+                        [readBuffer, writeBuffer] = [writeBuffer, readBuffer];
+                        stepSize = Math.floor(stepSize / 2);
+                        passCount++;
                     }
-                `;
 
-                // Create pipelines
-                const initPipeline = this.createComputePipeline(initShaderCode, 'init_seeds');
-                const jfaPipeline = this.createComputePipeline(jfaShaderCode, 'jfa_step');
-                const distancePipeline = this.createComputePipeline(distanceShaderCode, 'compute_distance');
+                    // Single progress update after all JFA passes complete
+                    if (progressCallback) {
+                        progressCallback(1.0);
+                    }
 
-                // Step 1: Initialize seeds
-                const initParams = new Uint32Array([width, height, new Float32Array([threshold]).buffer ? 0 : 0, 0]);
-                const initParamsView = new DataView(initParams.buffer);
-                initParamsView.setUint32(0, width, true);
-                initParamsView.setUint32(4, height, true);
-                initParamsView.setFloat32(8, threshold, true);
-                initParamsView.setUint32(12, 0, true);
-                this.device.queue.writeBuffer(paramsBuffer, 0, initParams);
+                    // Step 3: Compute final distance field
+                    const distParams = new Uint32Array([width, height, 0, 0]);
+                    this.device.queue.writeBuffer(paramsBuffer, 0, distParams);
 
-                const initBindGroup = this.device.createBindGroup({
-                    layout: initPipeline.getBindGroupLayout(0),
-                    entries: [
-                        { binding: 0, resource: { buffer: grayscaleBuffer } },
-                        { binding: 1, resource: { buffer: seedsBufferA } },
-                        { binding: 2, resource: { buffer: paramsBuffer } }
-                    ]
-                });
-
-                let commandEncoder = this.device.createCommandEncoder();
-                let passEncoder = commandEncoder.beginComputePass();
-                passEncoder.setPipeline(initPipeline);
-                passEncoder.setBindGroup(0, initBindGroup);
-                passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
-                passEncoder.end();
-                this.device.queue.submit([commandEncoder.finish()]);
-
-                // Step 2: JFA passes (ping-pong between buffers)
-                const maxDim = Math.max(width, height);
-                let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
-                let readBuffer = seedsBufferA;
-                let writeBuffer = seedsBufferB;
-                let passCount = 0;
-                const totalPasses = Math.ceil(Math.log2(maxDim));
-
-                // Batch all JFA passes into a single command submission for max performance
-                while (stepSize >= 1) {
-                    // Update params with step size
-                    const jfaParams = new Uint32Array([width, height, stepSize, 0]);
-                    this.device.queue.writeBuffer(paramsBuffer, 0, jfaParams);
-
-                    const jfaBindGroup = this.device.createBindGroup({
-                        layout: jfaPipeline.getBindGroupLayout(0),
+                    const distanceBindGroup = this.device.createBindGroup({
+                        layout: distancePipeline.getBindGroupLayout(0),
                         entries: [
                             { binding: 0, resource: { buffer: readBuffer } },
-                            { binding: 1, resource: { buffer: writeBuffer } },
+                            { binding: 1, resource: { buffer: distanceBuffer } },
                             { binding: 2, resource: { buffer: paramsBuffer } }
                         ]
                     });
 
                     commandEncoder = this.device.createCommandEncoder();
                     passEncoder = commandEncoder.beginComputePass();
-                    passEncoder.setPipeline(jfaPipeline);
-                    passEncoder.setBindGroup(0, jfaBindGroup);
-                    passEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
+                    passEncoder.setPipeline(distancePipeline);
+                    passEncoder.setBindGroup(0, distanceBindGroup);
+                    passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
                     passEncoder.end();
                     this.device.queue.submit([commandEncoder.finish()]);
 
-                    // NO sync here - let GPU queue all passes!
+                    // Read back results
+                    const result = await this.readBuffer(distanceBuffer, pixelCount * 4);
 
-                    // Swap buffers
-                    [readBuffer, writeBuffer] = [writeBuffer, readBuffer];
-                    stepSize = Math.floor(stepSize / 2);
-                    passCount++;
+                    return result;
+                } finally {
+                    // Always cleanup buffers, even on error
+                    try {
+                        grayscaleBuffer.destroy();
+                        seedsBufferA.destroy();
+                        seedsBufferB.destroy();
+                        distanceBuffer.destroy();
+                        paramsBuffer.destroy();
+                    } catch (e) {
+                        console.warn('Error cleaning up GPU buffers:', e);
+                    }
                 }
-
-                // Single progress update after all JFA passes complete
-                if (progressCallback) {
-                    progressCallback(1.0);
-                }
-
-                // Step 3: Compute final distance field
-                const distParams = new Uint32Array([width, height, 0, 0]);
-                this.device.queue.writeBuffer(paramsBuffer, 0, distParams);
-
-                const distanceBindGroup = this.device.createBindGroup({
-                    layout: distancePipeline.getBindGroupLayout(0),
-                    entries: [
-                        { binding: 0, resource: { buffer: readBuffer } },
-                        { binding: 1, resource: { buffer: distanceBuffer } },
-                        { binding: 2, resource: { buffer: paramsBuffer } }
-                    ]
-                });
-
-                commandEncoder = this.device.createCommandEncoder();
-                passEncoder = commandEncoder.beginComputePass();
-                passEncoder.setPipeline(distancePipeline);
-                passEncoder.setBindGroup(0, distanceBindGroup);
-                passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
-                passEncoder.end();
-                this.device.queue.submit([commandEncoder.finish()]);
-
-                // Read back results
-                const result = await this.readBuffer(distanceBuffer, pixelCount * 4);
-
-                // Cleanup
-                grayscaleBuffer.destroy();
-                seedsBufferA.destroy();
-                seedsBufferB.destroy();
-                distanceBuffer.destroy();
-                paramsBuffer.destroy();
-
-                return result;
             }
         }
 
@@ -1634,6 +1654,11 @@
                 }
                 this.ctx.stroke();
             }
+
+            // Cleanup method for memory management
+            clear() {
+                this.previewImageData = null;
+            }
         }
 
         class SelectionManager {
@@ -1764,6 +1789,14 @@
                 console.log('Selection (Image Coords):', this.selection);
                 document.getElementById('rerunBtn').style.display = 'block';
             }
+
+            // Cleanup method to remove event listeners
+            destroy() {
+                this.disable();
+                this.overlay.removeEventListener('mousedown', this.onMouseDown);
+                this.overlay.removeEventListener('mousemove', this.onMouseMove);
+                this.overlay.removeEventListener('mouseup', this.onMouseUp);
+            }
         }
 
         class MarchingWaves {
@@ -1838,6 +1871,53 @@
                         setImmediate ? setImmediate(resolve) : setTimeout(resolve, 0);
                     }
                 });
+            }
+
+            // Cleanup methods for memory management
+            clearProcessingData() {
+                // Clear large processing arrays
+                this.imageData = null;
+                this.grayData = null;
+                this.solution = null;
+                this.contours = [];
+                this.rawContours = [];
+                this.originPoints = [];
+                this.perf = {};
+
+                // Clear preview data
+                if (this.livePreviewManager) {
+                    this.livePreviewManager.clear();
+                }
+            }
+
+            clearPreviewData() {
+                // Clear LivePreviewManager data
+                if (this.livePreviewManager) {
+                    this.livePreviewManager.clear();
+                }
+            }
+
+            // Memory cleanup after export
+            cleanupAfterExport() {
+                console.log('Cleaning up memory after export');
+                this.clearProcessingData();
+
+                // Suggest garbage collection if available
+                if (typeof gc === 'function') {
+                    gc();
+                }
+
+                // Check worker pool memory pressure
+                if (this.workerPool) {
+                    this.workerPool.checkMemoryPressure();
+                }
+            }
+
+            // Force garbage collection hint
+            forceGC() {
+                if (typeof gc === 'function') {
+                    gc();
+                }
             }
 
             // Worker support methods
@@ -2181,7 +2261,12 @@
                 await this.yieldToBrowser();
                 this.updateProgress(showProgress, 100, 'Complete!');
 
-                return this.getSVG(width, height, lineColor, lineWidth, antiAlias);
+                const svg = this.getSVG(width, height, lineColor, lineWidth, antiAlias);
+
+                // Cleanup memory after export
+                this.cleanupAfterExport();
+
+                return svg;
             }
 
             updateProgress(show, percent, text) {
@@ -4104,6 +4189,15 @@
             // Notify the marchingWaves instance of visibility change
             if (window.marchingWaves) {
                 marchingWaves.pageVisibilityChanged(isPageVisible);
+
+                // Trigger memory cleanup when tab becomes visible after being hidden
+                if (isPageVisible && marchingWaves.workerPool) {
+                    // Terminate idle workers that accumulated while hidden
+                    marchingWaves.workerPool.terminateIdleWorkers();
+
+                    // Suggest garbage collection
+                    marchingWaves.forceGC();
+                }
             }
 
             // Reset document title when tab becomes visible again
@@ -5028,6 +5122,34 @@
 
         // Expose test function globally for manual testing
         window.testTabSwitching = testTabSwitching;
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            console.log('Cleaning up before page unload');
+
+            // Clear processing data
+            if (marchingWaves) {
+                marchingWaves.clearProcessingData();
+            }
+
+            // Destroy selection manager
+            if (selectionManager) {
+                selectionManager.destroy();
+            }
+
+            // Terminate all workers
+            if (typeof getWorkerPool === 'function') {
+                const pool = getWorkerPool();
+                if (pool) {
+                    pool.terminateAll();
+                }
+            }
+
+            // Force garbage collection if available
+            if (typeof gc === 'function') {
+                gc();
+            }
+        });
     </script>
 </body>
 </html>
