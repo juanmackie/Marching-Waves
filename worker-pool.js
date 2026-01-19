@@ -147,13 +147,16 @@ class WorkerPool {
         promise.taskId = taskId;
         promise.worker = worker;
         
+        // Extract onProgress callback and create clean options for worker
+        const { onProgress, ...optionsWithoutCallback } = options;
+        
         // Send task to worker
         worker.postMessage({
             type: 'execute',
             taskId,
             method,
             params,
-            options
+            options: optionsWithoutCallback
         });
         
         return promise;
