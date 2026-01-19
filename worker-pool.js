@@ -231,6 +231,15 @@ class WorkerPool {
             activeTasks: this.activeTasks.size
         };
     }
+
+    broadcastVisibility(isVisible) {
+        for (const worker of this.workers) {
+            worker.postMessage({
+                type: 'visibility',
+                isVisible: isVisible
+            });
+        }
+    }
 }
 
 // Global worker pool instance

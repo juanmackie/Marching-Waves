@@ -137,11 +137,46 @@ async function checkPause() {
     }
 }
 
+// MessageChannel is NOT throttled like setTimeout
+const yieldChannel = new MessageChannel();
+let yieldResolve = null;
+
+yieldChannel.port1.onmessage = () => {
+    if (yieldResolve) {
+        const resolve = yieldResolve;
+        yieldResolve = null;
+        resolve();
+    }
+};
+
+// Progressive enhancement: use scheduler.postTask if available
+const hasScheduler = typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function';
+
 function yieldToBrowser() {
     return new Promise(resolve => {
-        setTimeout(resolve, 0);
+        if (hasScheduler) {
+            scheduler.postTask(resolve, { priority: 'background' });
+        } else {
+            yieldResolve = resolve;
+            yieldChannel.port2.postMessage(null);
+        }
     });
 }
+
+// Visibility state for adaptive batch sizing
+let isVisible = true;
+
+// Update visibility handler
+const originalOnmessage = self.onmessage;
+self.onmessage = function(e) {
+    const { type } = e.data;
+
+    if (type === 'visibility') {
+        isVisible = e.data.isVisible;
+    } else {
+        originalOnmessage(e);
+    }
+};
 
 // ============================================
 // CPU-BASED FAST MARCHING METHOD SOLVER
@@ -219,7 +254,7 @@ async function handleSolveEikonalCPU(taskId, params, options) {
     // Fast Marching Method
     const f = grayData;
     let processed = 0;
-    const batchSize = 1000;
+    const batchSize = isVisible ? 1000 : 4000;
     
     while (heap.length > 0) {
         const current = heapPop();
@@ -395,8 +430,16 @@ async function handleExtractContoursAdaptive(taskId, params, options) {
                     case 11:
                         addLine(0.5, 1, interp(v01, v11, level), 1); break;
                     case 5:
-                        addLine(0, interp(v00, v10, level), 0.5, 1);
-                        addLine(0.5, 0, interp(v01, v11, level), 1); break;
+                        const centerValue5 = (v00 + v10 + v01 + v11) / 4;
+                        const connectSameSide5 = centerValue5 >= level;
+                        if (connectSameSide5) {
+                            addLine(0, interp(v00, v10, level), 0.5, 1);
+                            addLine(0.5, 0, interp(v01, v11, level), 1);
+                        } else {
+                            addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
+                            addLine(0.5, 0, 0.5, 1);
+                        }
+                        break;
                     case 6:
                     case 9:
                         addLine(0.5, 0, 0.5, 1); break;
@@ -405,15 +448,24 @@ async function handleExtractContoursAdaptive(taskId, params, options) {
                         addLine(0, interp(v00, v10, level), 0.5, 1);
                         addLine(0.5, 0, 1, interp(v10, v11, level)); break;
                     case 10:
-                        addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
-                        addLine(0.5, 0, 0.5, 1); break;
+                        const centerValue10 = (v00 + v10 + v01 + v11) / 4;
+                        const connectSameSide10 = centerValue10 >= level;
+                        if (connectSameSide10) {
+                            addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
+                            addLine(0.5, 0, 0.5, 1);
+                        } else {
+                            addLine(0, interp(v00, v10, level), 0.5, 1);
+                            addLine(0.5, 0, interp(v01, v11, level), 1);
+                        }
+                        break;
                 }
                 
                 levelLines.push(...lines);
                 
                 // Periodic updates
                 processed++;
-                if (processed % 5000 === 0) {
+                const batchSize = isVisible ? 5000 : 20000;
+                if (processed % batchSize === 0) {
                     checkCancelled();
                     await checkPause();
                     
@@ -502,8 +554,9 @@ async function handleExtractStreamlines(taskId, params, options) {
     };
     
     // Trace streamlines
+    const checkYieldInterval = isVisible ? 500 : 2000;
     for (let i = 0; i < seeds.length; i++) {
-        if (i % 500 === 0) {
+        if (i % checkYieldInterval === 0) {
             checkCancelled();
             await checkPause();
             
@@ -689,8 +742,9 @@ async function handleExtractStipple(taskId, params, options) {
         if (!found) {
             active.splice(activeIdx, 1);
         }
-        
-        if (points.length % 2000 === 0 && showProgress) {
+
+        const stippleCheckInterval = isVisible ? 2000 : 8000;
+        if (points.length % stippleCheckInterval === 0 && showProgress) {
             postProgress(taskId, 60 + (points.length / 40000) * 30, `Stippling (${points.length} dots)...`);
             await yieldToBrowser();
         }
@@ -743,9 +797,10 @@ async function handleExtractTSP(taskId, params, options) {
     const orderedPoints = [points[currentIdx]];
     used[currentIdx] = 1;
     let remaining = points.length - 1;
-    
+    const tspCheckInterval = isVisible ? 1000 : 4000;
+
     while (remaining > 0) {
-        if (remaining % 1000 === 0) {
+        if (remaining % tspCheckInterval === 0) {
             checkCancelled();
             await checkPause();
             
