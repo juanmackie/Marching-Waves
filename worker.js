@@ -152,17 +152,10 @@ yieldChannel.port1.onmessage = () => {
     }
 };
 
-// Progressive enhancement: use scheduler.postTask if available
-const hasScheduler = typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function';
-
 function yieldToBrowser() {
     return new Promise(resolve => {
-        if (hasScheduler) {
-            scheduler.postTask(resolve, { priority: 'background' });
-        } else {
-            yieldResolve = resolve;
-            yieldChannel.port2.postMessage(null);
-        }
+        yieldResolve = resolve;
+        yieldChannel.port2.postMessage(null);
     });
 }
 
@@ -409,13 +402,21 @@ async function handleExtractContoursAdaptive(taskId, params, options) {
                 
                 const lines = [];
                 
+                const nAmp = interval * 0.08;
                 const addLine = (x1, y1, x2, y2) => {
+                    const rx1 = x + x1 + noiseDisplace(x + x1, y + y1, nAmp);
+                    const ry1 = y + y1 + noiseDisplace(y + y1, x + x1, nAmp);
+                    const rx2 = x + x2 + noiseDisplace(x + x2, y + y2, nAmp);
+                    const ry2 = y + y2 + noiseDisplace(y + y2, x + x2, nAmp);
+                    if (!isFinite(rx1) || !isFinite(ry1) || !isFinite(rx2) || !isFinite(ry2)) return;
                     if (edgeGuidance && edgeSensitivity > 0.1) {
-                        const p1 = snapToEdge(x + x1, y + y1, level, edgeMap, solution, width, height, edgeSensitivity, interval);
-                        const p2 = snapToEdge(x + x2, y + y2, level, edgeMap, solution, width, height, edgeSensitivity, interval);
-                        lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+                        const p1 = snapToEdge(rx1, ry1, level, edgeMap, solution, width, height, edgeSensitivity, interval);
+                        const p2 = snapToEdge(rx2, ry2, level, edgeMap, solution, width, height, edgeSensitivity, interval);
+                        if (p1 && isFinite(p1.x) && isFinite(p1.y) && p2 && isFinite(p2.x) && isFinite(p2.y)) {
+                            lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+                        }
                     } else {
-                        lines.push({ x1: x + x1, y1: y + y2, x2: x + x2, y2: y + y2 });
+                        lines.push({ x1: rx1, y1: ry1, x2: rx2, y2: ry2 });
                     }
                 };
                 
@@ -580,6 +581,8 @@ async function handleExtractStreamlines(taskId, params, options) {
             let cx = seed.x;
             let cy = seed.y;
             
+            const curlStrength = 1.2;
+            const curlFreq = 0.04;
             for (let step = 0; step < maxPathPoints; step++) {
                 const ix = Math.floor(cx);
                 const iy = Math.floor(cy);
@@ -592,8 +595,11 @@ async function handleExtractStreamlines(taskId, params, options) {
                 const mag1 = Math.sqrt(g1x * g1x + g1y * g1y);
                 if (mag1 < 0.001) break;
                 
-                const k1x = (g1x / mag1) * stepSize * direction;
-                const k1y = (g1y / mag1) * stepSize * direction;
+                const noise1 = smoothNoise(cx * curlFreq, cy * curlFreq);
+                const curl1 = noise1 * curlStrength;
+                
+                const k1x = (g1x / mag1) * stepSize * direction + (-g1y / mag1) * curl1;
+                const k1y = (g1y / mag1) * stepSize * direction + (g1x / mag1) * curl1;
                 
                 const nx = cx + k1x;
                 const ny = cy + k1y;
@@ -663,7 +669,13 @@ async function handleExtractStipple(taskId, params, options) {
     const getRadius = (x, y) => {
         const idx = Math.floor(y) * width + Math.floor(x);
         const val = grayData[idx];
-        return minRadius + (val * (maxRadius - minRadius));
+        const gx = (x < width - 1) ? Math.abs(grayData[idx] - grayData[idx + 1]) : 0;
+        const gy = (y < height - 1) ? Math.abs(grayData[idx] - grayData[idx + width]) : 0;
+        const grad = Math.min(1, gx + gy);
+        const brightFactor = 1 - val;
+        const gradBoost = 1 - grad * 0.7;
+        const radius = minRadius + (maxRadius - minRadius) * Math.pow(brightFactor, 0.6) * gradBoost;
+        return Math.max(minRadius, Math.min(maxRadius, radius));
     };
     
     const insertPoint = (p) => {
@@ -857,18 +869,67 @@ async function handleExtractTSP(taskId, params, options) {
         } else break;
     }
     
+    const improved = optimizeTSP2Opt(orderedPoints);
+    
     const t1 = performance.now();
     const performance = {
         totalMs: t1 - t0,
-        pointsConnected: orderedPoints.length
+        pointsConnected: improved.length
     };
     
-    postResult(taskId, { contours: [orderedPoints], raw: [], skippedJoining: false }, performance);
+    postResult(taskId, { contours: [improved], raw: [], skippedJoining: false }, performance);
+}
+
+function optimizeTSP2Opt(points) {
+    if (points.length < 4) return points;
+    const pts = [...points];
+    const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+    const n = pts.length;
+    let improved = true;
+    let maxPasses = Math.max(5, Math.min(20, Math.floor(100000 / n)));
+    while (improved && maxPasses-- > 0) {
+        improved = false;
+        for (let i = 0; i < n - 2; i++) {
+            for (let j = i + 2; j < n - 1; j++) {
+                const d1 = d2(pts[i], pts[i + 1]) + d2(pts[j], pts[j + 1]);
+                const d2_swapped = d2(pts[i], pts[j]) + d2(pts[i + 1], pts[j + 1]);
+                if (d2_swapped < d1) {
+                    let left = i + 1, right = j;
+                    while (left < right) {
+                        [pts[left], pts[right]] = [pts[right], pts[left]];
+                        left++; right--;
+                    }
+                    improved = true;
+                }
+            }
+        }
+    }
+    return pts;
 }
 
 // ============================================
 // CROSS-HATCH EXTRACTION
 // ============================================
+function computeDominantAngle(grayData, width, height) {
+    let sumSin = 0, sumCos = 0, count = 0;
+    for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+            const idx = y * width + x;
+            const gx = (grayData[idx + 1] - grayData[idx - 1]);
+            const gy = (grayData[idx + width] - grayData[idx - width]);
+            const mag = gx * gx + gy * gy;
+            if (mag > 0.01) {
+                const angle = Math.atan2(gy, gx);
+                sumSin += Math.sin(angle * 2) * mag;
+                sumCos += Math.cos(angle * 2) * mag;
+                count++;
+            }
+        }
+    }
+    if (count === 0) return -Math.PI / 4;
+    return Math.atan2(sumSin, sumCos) / 2;
+}
+
 async function handleExtractHatch(taskId, params, options) {
     const { grayData, width, height } = params;
     const { interval = 10, threshold = 0.5, showProgress } = options;
@@ -876,20 +937,24 @@ async function handleExtractHatch(taskId, params, options) {
     const t0 = performance.now();
     
     const lines = [];
+    const spacing = interval;
+    const dominantAngle = computeDominantAngle(grayData, width, height);
+
     const layers = [
-        { angle: -Math.PI / 4, t: threshold + 0.2 },
-        { angle: Math.PI / 4, t: threshold },
-        { angle: 0, t: threshold - 0.2 },
-        { angle: Math.PI / 2, t: threshold - 0.3 }
+        { angle: dominantAngle + Math.PI / 4, t: threshold + 0.15 },
+        { angle: dominantAngle - Math.PI / 4, t: threshold },
+        { angle: dominantAngle, t: threshold - 0.2 },
+        { angle: dominantAngle + Math.PI / 2, t: threshold - 0.25 }
     ];
     
     const maxLength = Math.sqrt(width * width + height * height);
     
+    const hatchCheckYield = 20;
+    let hatchProgressCheck = 0;
     for (let l = 0; l < layers.length; l++) {
         const layer = layers[l];
         const angle = layer.angle;
         const layerThreshold = Math.max(0.1, layer.t);
-        const spacing = interval;
         
         const cx = width / 2;
         const cy = height / 2;
@@ -928,9 +993,12 @@ async function handleExtractHatch(taskId, params, options) {
                 }
             }
             
-            checkCancelled();
-            await checkPause();
-            await yieldToBrowser();
+            hatchProgressCheck++;
+            if (hatchProgressCheck % hatchCheckYield === 0) {
+                checkCancelled();
+                await checkPause();
+                await yieldToBrowser();
+            }
         }
         
         if (showProgress) {
@@ -992,6 +1060,30 @@ function computeDistanceFieldGradient(solution, width, height) {
     return { gradX, gradY, gradMag };
 }
 
+const PHI = 1.618033988749895;
+
+function hashNoise(x, y) {
+    let h = (Math.floor(x) * 374761393 + Math.floor(y) * 668265263) | 0;
+    h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+    return ((h ^ (h >>> 16)) / 2147483647);
+}
+
+function smoothNoise(x, y) {
+    const ix = Math.floor(x), iy = Math.floor(y);
+    const fx = x - ix, fy = y - iy;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const v00 = hashNoise(ix, iy);
+    const v10 = hashNoise(ix + 1, iy);
+    const v01 = hashNoise(ix, iy + 1);
+    const v11 = hashNoise(ix + 1, iy + 1);
+    return v00 + (v10 - v00) * sx + (v01 - v00) * sy + (v11 - v01 - v10 + v00) * sx * sy;
+}
+
+function noiseDisplace(x, y, amp) {
+    return amp * smoothNoise(x * 0.5 + 100, y * 0.5 + 200) + amp * 0.5 * smoothNoise(x * 1.1 + 300, y * 1.1 + 400);
+}
+
 function generateAdaptiveLevels(solution, width, height, interval, min, max, gradMag, detailLevel) {
     const levels = [];
     
@@ -1000,10 +1092,14 @@ function generateAdaptiveLevels(solution, width, height, interval, min, max, gra
     const range = max - min;
     if (range < 0.001) return [min + range / 2];
     
-    const targetLevels = Math.max(1, Math.floor(range / interval));
+    const avgGrad = detailLevel ?? 0.5;
+    let current = min + interval;
     
-    for (let l = min + interval; l < max; l += interval) {
-        levels.push(l);
+    while (current < max) {
+        levels.push(current);
+        const mod = 1 + 0.3 * Math.sin(current * PHI);
+        const gradMod = 0.8 + 0.4 * (1 - Math.min(1, avgGrad));
+        current += interval * mod * gradMod;
     }
     
     return levels;
@@ -1053,10 +1149,5 @@ function cleanupWorkerMemory() {
     // Clear yield promise
     if (yieldResolve) {
         yieldResolve = null;
-    }
-
-    // Force garbage collection hint
-    if (typeof global !== 'undefined' && typeof global.gc === 'function') {
-        global.gc();
     }
 }

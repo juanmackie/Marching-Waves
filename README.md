@@ -243,13 +243,6 @@ For extensive debugging, check the browser console (F12 → Console) for:
 - Performance timing information
 - Error details
 
-### Test Files
-
-The repository contains multiple test files for development and verification:
-- `test.html`, `comprehensive_test.html`: Various test implementations
-- `verify_fix.js`: Verification scripts for bug fixes
-- `debug_test.js`: Debugging utilities
-
 ## Contributing
 
 This project welcomes contributions! Areas for improvement include:

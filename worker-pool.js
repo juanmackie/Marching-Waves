@@ -66,9 +66,6 @@ class WorkerPool {
 
                             // Schedule idle worker cleanup
                             this.scheduleCleanup();
-
-                            // Process next task in queue
-                            this.processQueue();
                             break;
 
                         case 'error':
@@ -82,9 +79,6 @@ class WorkerPool {
 
                             // Schedule idle worker cleanup
                             this.scheduleCleanup();
-
-                            // Process next task in queue
-                            this.processQueue();
                             break;
                     }
                 };
@@ -92,10 +86,6 @@ class WorkerPool {
                 worker.onerror = (error) => {
                     console.error('Worker error:', error);
                     reject(error);
-                };
-
-                worker.onload = () => {
-                    console.log('Worker loaded successfully');
                 };
 
                 worker.taskCount = 0;
@@ -192,11 +182,6 @@ class WorkerPool {
         );
         
         return Promise.all(promises);
-    }
-
-    processQueue() {
-        // Tasks are processed immediately when workers are available
-        // This method can be enhanced for better queuing strategy
     }
 
     async cancelTask(taskId) {
@@ -329,23 +314,6 @@ class WorkerPool {
         }
     }
 
-    // Add memory pressure detection
-    checkMemoryPressure() {
-        if (typeof performance !== 'undefined' && performance.memory) {
-            const memory = performance.memory;
-            const usageRatio = memory.usedJSHeapSize / memory.jsHeapSizeLimit;
-
-            if (usageRatio > 0.8) {
-                console.warn('Memory pressure detected, cleaning up workers');
-                this.terminateIdleWorkers();
-
-                // Also suggest GC
-                if (typeof gc === 'function') {
-                    gc();
-                }
-            }
-        }
-    }
 }
 
 // Global worker pool instance

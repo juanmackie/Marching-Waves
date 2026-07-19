@@ -1,958 +1,281 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marching Waves Generator</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #eee;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            color: #fff;
-        }
-
-        .subtitle {
-            color: #888;
-            font-size: 1.1rem;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 340px 1fr;
-            gap: 20px;
-        }
-
-        .sidebar {
-            background: #16213e;
-            padding: 20px;
-            border-radius: 12px;
-            height: fit-content;
-        }
-
-        .panel {
-            margin-bottom: 20px;
-        }
-
-        .panel h3 {
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #888;
-            margin-bottom: 12px;
-        }
-
-        .drop-zone {
-            border: 2px dashed #444;
-            border-radius: 8px;
-            padding: 20px 15px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: #1a1a2e;
-        }
-
-        .drop-zone:hover, .drop-zone.dragover {
-            border-color: #00d9ff;
-            background: rgba(0, 217, 255, 0.1);
-        }
-
-        .drop-zone-icon {
-            font-size: 2rem;
-            margin-bottom: 10px;
-        }
-
-        .drop-zone p {
-            color: #888;
-            font-size: 0.85rem;
-        }
-
-        #fileInput {
-            display: none;
-        }
-
-        .sample-btn {
-            width: 100%;
-            padding: 8px;
-            border: 1px dashed #444;
-            border-radius: 6px;
-            background: transparent;
-            color: #888;
-            font-size: 0.8rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 10px;
-        }
-
-        .sample-btn:hover {
-            border-color: #00d9ff;
-            color: #00d9ff;
-        }
-
-        .control-group {
-            margin-bottom: 15px;
-        }
-
-        .control-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: #ccc;
-            margin-bottom: 6px;
-        }
-
-        .control-group input[type="range"] {
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: #333;
-            outline: none;
-            -webkit-appearance: none;
-        }
-
-        .control-group input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #00d9ff;
-            cursor: pointer;
-        }
-
-        .value-display {
-            text-align: right;
-            font-size: 0.8rem;
-            color: #00d9ff;
-            margin-top: 4px;
-        }
-
-        /* Info Icon Styles */
-        .label-with-info {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
-        }
-
-        .label-with-info label {
-            margin-bottom: 0;
-        }
-
-        .info-icon {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            font-size: 14px;
-            color: #888;
-            cursor: help;
-            position: relative;
-            transition: color 0.2s ease;
-            user-select: none;
-        }
-
-        .info-icon:hover,
-        .info-icon:focus {
-            color: #00d9ff;
-            outline: none;
-        }
-
-        /* Tooltip Base */
-        .info-icon::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            left: 50%;
-            bottom: calc(100% + 8px);
-            transform: translateX(-50%) translateY(-4px);
-            background: rgba(0, 30, 60, 0.98);
-            color: #fff;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            line-height: 1.4;
-            white-space: normal;
-            width: 220px;
-            text-align: left;
-            pointer-events: none;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
-            border: 1px solid rgba(0, 217, 255, 0.3);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-
-        /* Tooltip Arrow */
-        .info-icon::before {
-            content: '';
-            position: absolute;
-            left: 50%;
-            bottom: calc(100% + 2px);
-            transform: translateX(-50%);
-            border: 6px solid transparent;
-            border-top-color: rgba(0, 30, 60, 0.98);
-            pointer-events: none;
-            z-index: 1001;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.2s ease, visibility 0.2s;
-        }
-
-        /* Desktop Hover Tooltip */
-        @media (hover: hover) and (pointer: fine) {
-            .info-icon:hover::after,
-            .info-icon:hover::before {
-                opacity: 1;
-                visibility: visible;
-                transform: translateX(-50%) translateY(0);
-            }
-        }
-
-        /* Mobile/Touch: Click-to-toggle */
-        .info-icon.active::after,
-        .info-icon.active::before {
-            opacity: 1;
-            visibility: visible;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        /* Focus state for keyboard navigation */
-        .info-icon:focus::after,
-        .info-icon:focus::before {
-            opacity: 1;
-            visibility: visible;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        /* Checkbox group info icon positioning */
-        .checkbox-group .info-icon {
-            margin-left: auto;
-        }
-
-        /* Adjust checkbox-group to accommodate icon */
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-            position: relative;
-        }
-
-        /* Tooltip position adjustment for right-aligned icons */
-        .checkbox-group .info-icon::after {
-            left: auto;
-            right: 0;
-            transform: translateX(0) translateY(-4px);
-        }
-
-        .checkbox-group .info-icon::before {
-            left: auto;
-            right: 10px;
-            transform: translateX(0);
-        }
-
-        .checkbox-group .info-icon:hover::after,
-        .checkbox-group .info-icon:focus::after,
-        .checkbox-group .info-icon.active::after {
-            transform: translateX(0) translateY(0);
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 900px) {
-            .info-icon::after {
-                width: 200px;
-                font-size: 0.7rem;
-                padding: 6px 10px;
-            }
-        }
-
-        /* Color picker group with info icon */
-        .color-picker-group-with-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-
-        .color-picker-group-with-info .info-icon {
-            margin-left: auto;
-        }
-
-        .color-picker-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .color-picker-group input[type="color"] {
-            width: 40px;
-            height: 30px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .color-picker-group span {
-            font-size: 0.85rem;
-            color: #ccc;
-        }
-
-        .select-group {
-            margin-bottom: 12px;
-        }
-
-        .select-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: #ccc;
-            margin-bottom: 6px;
-        }
-
-        .select-group select {
-            width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #333;
-            border-radius: 6px;
-            background: #1a1a2e;
-            color: #eee;
-            font-size: 0.85rem;
-            cursor: pointer;
-        }
-
-        .select-group select:focus {
-            outline: none;
-            border-color: #00d9ff;
-        }
-
-        .btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 10px;
-        }
-
-        .btn-primary {
-            background: #00d9ff;
-            color: #1a1a2e;
-        }
-
-        .btn-primary:hover {
-            background: #00b8d9;
-        }
-
-        .btn-primary:disabled {
-            background: #444;
-            color: #888;
-            cursor: not-allowed;
-        }
-
-        .btn-secondary {
-            background: #333;
-            color: #eee;
-        }
-
-        .btn-secondary:hover {
-            background: #444;
-        }
-
-        .btn-cancel {
-            background: #ff4444;
-            color: #fff;
-        }
-
-        .btn-cancel:hover {
-            background: #cc3333;
-        }
-
-        .preview-section {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .preview-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 15px;
-        }
-
-        .preview-header h3 {
-            color: #fff;
-        }
-
-        .preview-container {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #1a1a2e;
-            border-radius: 8px;
-            min-height: 500px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .preview-container.has-image {
-            background: repeating-conic-gradient(#222 0% 25%, #2a2a2a 0% 50%) 50% / 20px 20px;
-        }
-
-        #dropPreview {
-            max-width: 100%;
-            max-height: 100%;
-            display: none;
-        }
-
-        .placeholder {
-            text-align: center;
-            color: #666;
-        }
-
-        .placeholder-icon {
-            font-size: 4rem;
-            margin-bottom: 15px;
-        }
-
-        .progress-container {
-            display: none;
-            margin-top: 15px;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: #333;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: #00d9ff;
-            width: 0%;
-            transition: width 0.1s linear;
-        }
-
-        .progress-text {
-            font-size: 0.8rem;
-            color: #888;
-            margin-top: 8px;
-            text-align: center;
-        }
-
-        .status {
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 15px;
-            font-size: 0.85rem;
-            display: none;
-        }
-
-        .status.success {
-            background: rgba(0, 255, 136, 0.1);
-            color: #00ff88;
-            border: 1px solid rgba(0, 255, 136, 0.3);
-        }
-
-        .status.error {
-            background: rgba(255, 68, 68, 0.1);
-            color: #ff4444;
-            border: 1px solid rgba(255, 68, 68, 0.3);
-        }
-
-        .status.info {
-            background: rgba(0, 217, 255, 0.1);
-            color: #00d9ff;
-            border: 1px solid rgba(0, 217, 255, 0.3);
-        }
-
-        .status.warning {
-            background: rgba(255, 200, 0, 0.1);
-            color: #ffc800;
-            border: 1px solid rgba(255, 200, 0, 0.3);
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            accent-color: #00d9ff;
-        }
-
-        .checkbox-group label {
-            font-size: 0.85rem;
-            color: #ccc;
-            cursor: pointer;
-        }
-
-        .canvas-container {
-            display: none;
-            width: 100%;
-            height: 100%;
-        }
-
-        #outputCanvas {
-            max-width: 100%;
-            max-height: 100%;
-        }
-
-        .debug-panel {
-            border-top: 1px solid #333;
-            padding-top: 15px;
-            margin-top: 15px;
-        }
-
-        .perf-stats {
-            font-family: monospace;
-            font-size: 0.7rem;
-            color: #888;
-            background: #1a1a2e;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 10px;
-            white-space: pre-wrap;
-            display: none;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .perf-stats.visible {
-            display: block;
-        }
-
-        .cancel-btn-container {
-            display: none;
-        }
-
-        .cancel-btn-container.visible {
-            display: block;
-        }
-
-        @media (max-width: 900px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-        }
-        .selection-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
-            display: none;
-        }
-        .selection-overlay.active {
-            display: block;
-            cursor: crosshair;
-        }
-        .selection-box {
-            position: absolute;
-            border: 2px dashed #e91e63;
-            background: rgba(233, 30, 99, 0.1);
-            pointer-events: none;
-            display: none;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Marching Waves · Contour Art Generator</title>
+<meta name="description" content="Generate contour-based artworks from images using the Eikonal Equation with GPU acceleration.">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Marching Waves</h1>
-            <p class="subtitle">Generate contour-based artwork using the Eikonal Equation</p>
-        </header>
+<a class="skip-link" href="#main">Skip to main content</a>
 
-        <div class="main-content">
-            <aside class="sidebar">
-                <div id="gpuStatus" class="status info" style="display: block; margin-bottom: 10px; text-align: center; font-weight: bold;">
-                    <span id="gpuStatusIcon">⚙️</span> GPU Acceleration: <span id="gpuStatusText">Initializing...</span>
-                </div>
-                <div id="workerStatus" class="status info" style="display: block; margin-bottom: 20px; text-align: center; font-weight: bold;">
-                    <span id="workerStatusIcon">⚙️</span> Background Processing: <span id="workerStatusText">Initializing...</span>
-                </div>
-                <div class="panel">
-                    <h3>Input Image</h3>
-                    <div class="drop-zone" id="dropZone">
-                        <div class="drop-zone-icon">📁</div>
-                        <p>Drop image here or click to browse</p>
-                    </div>
-                    <input type="file" id="fileInput" accept="image/*">
-                    <button class="sample-btn" id="sampleBtn">Load Sample Pattern</button>
-                </div>
+<header>
+  <div class="logo" aria-label="Marching Waves">Marching<span class="approx">≈</span>Waves</div>
+  <div class="tagline">Generate contour-based artworks from images</div>
+  <div class="head-spacer"></div>
+  <div class="readout" id="readout" aria-live="polite">
+    <span id="gpuStatusText">Initializing GPU…</span> ·
+    <span id="workerStatusText">Starting workers…</span>
+  </div>
+  <a class="about-link" href="about.html" aria-label="About Marching Waves"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="lbl">About</span></a>
+</header>
 
-                <div class="panel">
-                    <h3>Parameters</h3>
-                    <div class="select-group">
-                        <div class="label-with-info">
-                            <label>Mode</label>
-                            <span class="info-icon"
-                                  data-tooltip="Select the primary generation algorithm. Contours follow elevation lines, while Streamlines follow the flow of the image gradient."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Modes">ⓘ</span>
-                        </div>
-                        <select id="modeSelect">
-                            <option value="contours">Marching Contours</option>
-                            <option value="streamlines">Flow Streamlines</option>
-                            <option value="stipple">Weighted Stipple</option>
-                            <option value="tsp">TSP Art (Continuous Line)</option>
-                            <option value="hatch">Cross Hatch</option>
-                        </select>
-                    </div>
-                    <div class="select-group">
-                        <div class="label-with-info">
-                            <label>Preset</label>
-                            <span class="info-icon"
-                                  data-tooltip="Choose a preset to quickly adjust all parameters to predefined configurations for different artistic styles and densities."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Presets">ⓘ</span>
-                        </div>
-                        <select id="presetSelect">
-                            <option value="custom">Custom</option>
-                            <option value="topo-map">Topographic Map</option>
-                            <option value="blueprint">Blueprint</option>
-                            <option value="flowing-silk">Flowing Silk</option>
-                            <option value="marble-flow">Marble Flow</option>
-                            <option value="ink-stipple">Ink Stipple</option>
-                            <option value="tangled-string">Tangled String (TSP)</option>
-                            <option value="fluid">Fluid</option>
-                            <option value="cyberpunk">Cyberpunk</option>
-                            <option value="ink-blot">Ink Blot</option>
-                            <option value="ethereal">Ethereal</option>
-                            <option value="sketch">Sketch (Hatch)</option>
-                        </select>
-                    </div>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Contour Interval</label>
-                            <span class="info-icon"
-                                  data-tooltip="Controls spacing between contour lines. Lower values create denser patterns, higher values create sparser patterns."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Contour Interval">ⓘ</span>
-                        </div>
-                        <input type="range" id="interval" min="2" max="20" value="8">
-                        <div class="value-display" id="intervalValue">8</div>
-                    </div>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Line Width</label>
-                            <span class="info-icon"
-                                  data-tooltip="Controls the thickness of drawn lines. Range from 0.5 (thin) to 3.0 (thick) pixels."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Line Width">ⓘ</span>
-                        </div>
-                        <input type="range" id="lineWidth" min="0.5" max="3" step="0.1" value="1">
-                        <div class="value-display" id="lineWidthValue">1.0</div>
-                    </div>
-                     <div class="control-group">
-                         <div class="label-with-info">
-                             <label>Threshold</label>
-                             <span class="info-icon"
-                                   data-tooltip="Determines which pixels become origin points for contours. Lower values select darker pixels, higher values select lighter pixels."
-                                   role="button"
-                                   tabindex="0"
-                                   aria-label="Information about Threshold">ⓘ</span>
-                         </div>
-                         <input type="range" id="threshold" min="0" max="100" value="50">
-                         <div class="value-display" id="thresholdValue">50</div>
-                     </div>
-                </div>
-
-                <div class="panel">
-                    <h3>Adaptive Contours</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="edgeGuidance" checked>
-                        <label for="edgeGuidance">Edge Guidance</label>
-                        <span class="info-icon"
-                              data-tooltip="When enabled, contours will snap to detected image edges for more accurate feature representation."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Edge Guidance">ⓘ</span>
-                    </div>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Edge Sensitivity</label>
-                            <span class="info-icon"
-                                  data-tooltip="Controls how strongly contours snap to edges. Higher values create more edge-following behavior."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Edge Sensitivity">ⓘ</span>
-                        </div>
-                        <input type="range" id="edgeSensitivity" min="0" max="1" step="0.05" value="0.6">
-                        <div class="value-display" id="edgeSensitivityValue">0.60</div>
-                    </div>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Detail Level</label>
-                            <span class="info-icon"
-                                  data-tooltip="Controls adaptive contour density. Higher values preserve more detail in complex areas."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Detail Level">ⓘ</span>
-                        </div>
-                        <input type="range" id="detailLevel" min="0" max="1" step="0.05" value="0.7">
-                        <div class="value-display" id="detailLevelValue">0.70</div>
-                    </div>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Contour Smoothness</label>
-                            <span class="info-icon"
-                                  data-tooltip="Controls post-processing smoothing of contour paths. Higher values create smoother curves."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Contour Smoothness">ⓘ</span>
-                        </div>
-                        <input type="range" id="contourSmoothness" min="0" max="1" step="0.05" value="0.65">
-                        <div class="value-display" id="contourSmoothnessValue">0.65</div>
-                    </div>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Feature Importance</label>
-                            <span class="info-icon"
-                                  data-tooltip="Controls bias towards important image features. Higher values emphasize significant features."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Feature Importance">ⓘ</span>
-                        </div>
-                        <input type="range" id="featureImportance" min="0" max="1" step="0.05" value="0.6">
-                        <div class="value-display" id="featureImportanceValue">0.60</div>
-                    </div>
-                </div>
-
-                <div class="panel">
-                    <h3>Style</h3>
-                    <div class="color-picker-group-with-info">
-                        <input type="color" id="lineColor" value="#000000">
-                        <span>Line Color</span>
-                        <span class="info-icon"
-                              data-tooltip="Sets the color of the generated contour lines in the final artwork."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Line Color">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group" style="margin-top: 15px;">
-                        <input type="checkbox" id="invert" checked>
-                        <label for="invert">Invert Colors</label>
-                        <span class="info-icon"
-                              data-tooltip="Reverses which pixels become origin points. When checked, light areas generate contours instead of dark areas."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Invert Colors">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="antiAlias" checked>
-                        <label for="antiAlias">Anti-aliasing</label>
-                        <span class="info-icon"
-                              data-tooltip="Smooths line edges for a cleaner appearance. Disable for sharper, pixel-precise lines."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Anti-aliasing">ⓘ</span>
-                    </div>
-                </div>
-
-                <div class="panel">
-                    <h3>Performance</h3>
-                    <div class="control-group">
-                        <div class="label-with-info">
-                            <label>Max Segments: <span id="maxSegValue">50000</span></label>
-                            <span class="info-icon"
-                                  data-tooltip="Limits the maximum number of line segments for performance. Higher values allow more detail but slower processing."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Max Segments">ⓘ</span>
-                        </div>
-                        <input type="range" id="maxSegments" min="10000" max="200000" value="50000" step="5000">
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="skipJoining">
-                        <label for="skipJoining">Skip path joining (faster)</label>
-                        <span class="info-icon"
-                              data-tooltip="Disables line connection optimization. Faster processing but may result in disconnected segments."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Skip path joining">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="showProgress" checked>
-                        <label for="showProgress">Show progress</label>
-                        <span class="info-icon"
-                              data-tooltip="Displays a progress bar during image processing. Disable for slight performance improvement."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Show progress">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="livePreview" checked>
-                        <label for="livePreview">Live preview</label>
-                        <span class="info-icon"
-                              data-tooltip="Updates the canvas in real-time during extraction. Disable for faster processing without intermediate updates."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Live preview">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="useGPU" checked>
-                        <label for="useGPU">GPU acceleration</label>
-                        <span class="info-icon"
-                              data-tooltip="Uses WebGPU for faster computation. Automatically falls back to CPU if unavailable."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about GPU acceleration">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="useWorkers" checked>
-                        <label for="useWorkers">Background processing</label>
-                        <span class="info-icon"
-                              data-tooltip="Enables Web Workers for background processing. Processing continues even when you switch tabs. Uses parallel processing for large images when enabled."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Background processing">ⓘ</span>
-                    </div>
-                </div>
-
-                <div class="panel debug-panel">
-                    <h3>Debug</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="debugMode">
-                        <label for="debugMode">Enable Debug Mode</label>
-                        <span class="info-icon"
-                              data-tooltip="Enables advanced visualization and diagnostic tools for development and troubleshooting."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Debug mode">ⓘ</span>
-                    </div>
-                    <div class="select-group" style="display: none;" id="vizModeGroup">
-                        <div class="label-with-info">
-                            <label>Visualization</label>
-                            <span class="info-icon"
-                                  data-tooltip="Selects the debug view mode. Choose between final result, grayscale conversion, solution heatmap, or raw contours."
-                                  role="button"
-                                  tabindex="0"
-                                  aria-label="Information about Visualization">ⓘ</span>
-                        </div>
-                        <select id="vizMode">
-                            <option value="final">Final Result</option>
-                            <option value="grayscale">Grayscale</option>
-                            <option value="heatmap">Solution Heatmap</option>
-                            <option value="raw">Raw Contours</option>
-                        </select>
-                    </div>
-                    <div class="checkbox-group" style="display: none;" id="originGroup">
-                        <input type="checkbox" id="showOrigins" checked>
-                        <label for="showOrigins">Show Origin Points</label>
-                        <span class="info-icon"
-                              data-tooltip="Displays red dots at origin points where contour generation begins."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Show origins">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group" style="display: none;" id="gridGroup">
-                        <input type="checkbox" id="showGrid">
-                        <label for="showGrid">Show Grid</label>
-                        <span class="info-icon"
-                              data-tooltip="Overlays a grid on the canvas to visualize the pixel coordinate system."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Show grid">ⓘ</span>
-                    </div>
-                    <div class="checkbox-group" style="display: none;" id="perfGroup">
-                        <input type="checkbox" id="showPerf" checked>
-                        <label for="showPerf">Performance Metrics</label>
-                        <span class="info-icon"
-                              data-tooltip="Shows detailed timing information for each processing stage."
-                              role="button"
-                              tabindex="0"
-                              aria-label="Information about Performance metrics">ⓘ</span>
-                    </div>
-                    <div class="perf-stats" id="perfStats"></div>
-                </div>
-
-                <div class="panel">
-                    <h3>Actions</h3>
-                    <button class="btn btn-primary" id="generateBtn" disabled>Generate Artwork</button>
-                    <div class="cancel-btn-container" id="cancelBtnContainer" style="display: none;">
-                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                            <button class="btn btn-secondary" id="pauseBtn" style="background: #f39c12; color: white; flex: 1;">Pause</button>
-                            <button class="btn btn-secondary" id="resumeBtn" style="background: #27ae60; color: white; flex: 1; display: none;">Resume</button>
-                        </div>
-                        <button class="btn btn-cancel" id="cancelBtn">Cancel</button>
-                    </div>
-                    <button class="btn btn-secondary" id="selectionBtn" style="margin-top: 10px;">Select Area to Rerun</button>
-                    <button class="btn btn-primary" id="rerunBtn" style="display: none; background: #9b59b6;">Rerun Selection</button>
-                    <button class="btn btn-secondary" id="exportBtn" disabled>Export SVG</button>
-                    <button class="btn btn-secondary" id="clearBtn">Clear All</button>
-                </div>
-
-                <div class="progress-container" id="progressContainer">
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill"></div>
-                    </div>
-                    <div class="progress-text" id="progressText">Processing...</div>
-                </div>
-
-                <div class="status" id="status"></div>
-            </aside>
-
-            <section class="preview-section">
-                <div class="preview-header">
-                    <h3>Preview</h3>
-                </div>
-                <div class="preview-container" id="previewContainer">
-                    <div class="placeholder" id="placeholder">
-                        <div class="placeholder-icon">🎨</div>
-                        <p>Drop an image to get started</p>
-                    </div>
-                    <img id="dropPreview" alt="Preview">
-                    <div class="canvas-container" id="canvasContainer">
-                        <canvas id="outputCanvas"></canvas>
-                    </div>
-                    <div class="selection-overlay" id="selectionOverlay">
-                        <div class="selection-box" id="selectionBox"></div>
-                    </div>
-                </div>
-            </section>
-        </div>
+<main id="main">
+  <div class="sidebar">
+    <div id="gpuStatus" class="status info" style="display:flex;margin:0 14px 6px">
+      <span id="gpuStatusIcon" style="margin-right:6px">&#9881;</span> GPU: <span id="gpuStatusText2">Initializing...</span>
     </div>
- 
+    <div id="workerStatus" class="status info" style="display:flex;margin:0 14px 14px">
+      <span id="workerStatusIcon" style="margin-right:6px">&#9881;</span> Workers: <span id="workerStatusText2">Initializing...</span>
+    </div>
+
+    <section id="secInput">
+      <button class="sec-head" type="button" aria-expanded="true">Input Image <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-zone-icon">📁</div>
+          <p>Drop image here or click to browse</p>
+        </div>
+        <input type="file" id="fileInput" accept="image/*">
+        <button class="sample-btn" id="sampleBtn">Load Sample Pattern</button>
+      </div>
+    </section>
+
+    <section id="secParams">
+      <button class="sec-head" type="button" aria-expanded="true">Parameters <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="input-group">
+          <div class="label-with-info">
+            <label for="modeSelect">Mode</label>
+            <span class="info-icon" data-tooltip="Select the primary generation algorithm. Contours follow elevation lines, while Streamlines follow the flow of the image gradient." role="button" tabindex="0" aria-label="Information about Modes">ⓘ</span>
+          </div>
+          <select id="modeSelect">
+            <option value="contours">Marching Contours</option>
+            <option value="streamlines">Flow Streamlines</option>
+            <option value="stipple">Weighted Stipple</option>
+            <option value="tsp">TSP Art (Continuous Line)</option>
+            <option value="hatch">Cross Hatch</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <div class="label-with-info">
+            <label for="presetSelect">Preset</label>
+            <span class="info-icon" data-tooltip="Choose a preset to quickly adjust all parameters to predefined configurations for different artistic styles and densities." role="button" tabindex="0" aria-label="Information about Presets">ⓘ</span>
+          </div>
+          <select id="presetSelect">
+            <option value="custom">Custom</option>
+            <option value="topo-map">Topographic Map</option>
+            <option value="blueprint">Blueprint</option>
+            <option value="flowing-silk">Flowing Silk</option>
+            <option value="marble-flow">Marble Flow</option>
+            <option value="ink-stipple">Ink Stipple</option>
+            <option value="tangled-string">Tangled String (TSP)</option>
+            <option value="fluid">Fluid</option>
+            <option value="cyberpunk">Cyberpunk</option>
+            <option value="ink-blot">Ink Blot</option>
+            <option value="ethereal">Ethereal</option>
+            <option value="sketch">Sketch (Hatch)</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="interval">Contour Interval</label><span class="ft-right"><span class="val" id="intervalValue">8</span></span></div>
+          <input type="range" id="interval" min="2" max="20" value="8">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="lineWidth">Line Width</label><span class="ft-right"><span class="val" id="lineWidthValue">1.0</span></span></div>
+          <input type="range" id="lineWidth" min="0.5" max="3" step="0.1" value="1">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="threshold">Threshold</label><span class="ft-right"><span class="val" id="thresholdValue">50</span></span></div>
+          <input type="range" id="threshold" min="0" max="100" value="50">
+        </div>
+      </div>
+    </section>
+
+    <section id="secAdaptive">
+      <button class="sec-head" type="button" aria-expanded="true">Adaptive Contours <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="checkbox-group">
+          <input type="checkbox" id="edgeGuidance" checked>
+          <label for="edgeGuidance">Edge Guidance</label>
+          <span class="info-icon" data-tooltip="When enabled, contours will snap to detected image edges for more accurate feature representation." role="button" tabindex="0" aria-label="Information about Edge Guidance">ⓘ</span>
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="edgeSensitivity">Edge Sensitivity</label><span class="ft-right"><span class="val" id="edgeSensitivityValue">0.60</span></span></div>
+          <input type="range" id="edgeSensitivity" min="0" max="1" step="0.05" value="0.6">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="detailLevel">Detail Level</label><span class="ft-right"><span class="val" id="detailLevelValue">0.70</span></span></div>
+          <input type="range" id="detailLevel" min="0" max="1" step="0.05" value="0.7">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="contourSmoothness">Contour Smoothness</label><span class="ft-right"><span class="val" id="contourSmoothnessValue">0.65</span></span></div>
+          <input type="range" id="contourSmoothness" min="0" max="1" step="0.05" value="0.65">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="featureImportance">Feature Importance</label><span class="ft-right"><span class="val" id="featureImportanceValue">0.60</span></span></div>
+          <input type="range" id="featureImportance" min="0" max="1" step="0.05" value="0.6">
+        </div>
+      </div>
+    </section>
+
+    <section id="secStyle">
+      <button class="sec-head" type="button" aria-expanded="true">Style <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="color-picker-group">
+          <input type="color" id="lineColor" value="#000000">
+          <span>Line Color</span>
+          <span class="info-icon" data-tooltip="Sets the color of the generated contour lines in the final artwork." role="button" tabindex="0" aria-label="Information about Line Color">ⓘ</span>
+        </div>
+        <div class="checkbox-group" style="margin-top:12px">
+          <input type="checkbox" id="invert" checked>
+          <label for="invert">Invert Colors</label>
+          <span class="info-icon" data-tooltip="Reverses which pixels become origin points. When checked, light areas generate contours instead of dark areas." role="button" tabindex="0" aria-label="Information about Invert Colors">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="antiAlias" checked>
+          <label for="antiAlias">Anti-aliasing</label>
+          <span class="info-icon" data-tooltip="Smooths line edges for a cleaner appearance. Disable for sharper, pixel-precise lines." role="button" tabindex="0" aria-label="Information about Anti-aliasing">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="varWidth">
+          <label for="varWidth">Variable Line Width</label>
+          <span class="info-icon" data-tooltip="Thicker lines in darker areas, thinner in lighter areas." role="button" tabindex="0" aria-label="Information about Variable Line Width">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="glitchEffect">
+          <label for="glitchEffect">Glitch Effect</label>
+          <span class="info-icon" data-tooltip="Adds periodic digital offsets to contour paths for a glitch aesthetic." role="button" tabindex="0" aria-label="Information about Glitch Effect">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="fractalEffect">
+          <label for="fractalEffect">Fractal Detail</label>
+          <span class="info-icon" data-tooltip="Subdivides long contour segments with fractal-like patterns." role="button" tabindex="0" aria-label="Information about Fractal Detail">ⓘ</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="secPerf">
+      <button class="sec-head" type="button" aria-expanded="true">Performance <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="field">
+          <div class="field-top"><label for="maxSegments">Max Segments: <span id="maxSegValue">50000</span></label></div>
+          <input type="range" id="maxSegments" min="10000" max="200000" value="50000" step="5000">
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="skipJoining">
+          <label for="skipJoining">Skip path joining (faster)</label>
+          <span class="info-icon" data-tooltip="Disables line connection optimization. Faster processing but may result in disconnected segments." role="button" tabindex="0" aria-label="Information about Skip path joining">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="showProgress" checked>
+          <label for="showProgress">Show progress</label>
+          <span class="info-icon" data-tooltip="Displays a progress bar during image processing. Disable for slight performance improvement." role="button" tabindex="0" aria-label="Information about Show progress">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="livePreview" checked>
+          <label for="livePreview">Live preview</label>
+          <span class="info-icon" data-tooltip="Updates the canvas in real-time during extraction. Disable for faster processing without intermediate updates." role="button" tabindex="0" aria-label="Information about Live preview">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="useGPU" checked>
+          <label for="useGPU">GPU acceleration</label>
+          <span class="info-icon" data-tooltip="Uses WebGPU for faster computation. Automatically falls back to CPU if unavailable." role="button" tabindex="0" aria-label="Information about GPU acceleration">ⓘ</span>
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="useWorkers" checked>
+          <label for="useWorkers">Background processing</label>
+          <span class="info-icon" data-tooltip="Enables Web Workers for background processing. Processing continues even when you switch tabs." role="button" tabindex="0" aria-label="Information about Background processing">ⓘ</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="secDebug">
+      <button class="sec-head" type="button" aria-expanded="true">Debug <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="checkbox-group">
+          <input type="checkbox" id="debugMode">
+          <label for="debugMode">Enable Debug Mode</label>
+          <span class="info-icon" data-tooltip="Enables advanced visualization and diagnostic tools for development and troubleshooting." role="button" tabindex="0" aria-label="Information about Debug mode">ⓘ</span>
+        </div>
+        <div class="input-group" style="display:none" id="vizModeGroup">
+          <div class="label-with-info">
+            <label for="vizMode">Visualization</label>
+            <span class="info-icon" data-tooltip="Selects the debug view mode." role="button" tabindex="0" aria-label="Information about Visualization">ⓘ</span>
+          </div>
+          <select id="vizMode">
+            <option value="final">Final Result</option>
+            <option value="grayscale">Grayscale</option>
+            <option value="heatmap">Solution Heatmap</option>
+            <option value="raw">Raw Contours</option>
+          </select>
+        </div>
+        <div class="checkbox-group" style="display:none" id="originGroup">
+          <input type="checkbox" id="showOrigins" checked>
+          <label for="showOrigins">Show Origin Points</label>
+          <span class="info-icon" data-tooltip="Displays red dots at origin points where contour generation begins." role="button" tabindex="0" aria-label="Information about Show origins">ⓘ</span>
+        </div>
+        <div class="checkbox-group" style="display:none" id="gridGroup">
+          <input type="checkbox" id="showGrid">
+          <label for="showGrid">Show Grid</label>
+          <span class="info-icon" data-tooltip="Overlays a grid on the canvas to visualize the pixel coordinate system." role="button" tabindex="0" aria-label="Information about Show grid">ⓘ</span>
+        </div>
+        <div class="checkbox-group" style="display:none" id="perfGroup">
+          <input type="checkbox" id="showPerf" checked>
+          <label for="showPerf">Performance Metrics</label>
+          <span class="info-icon" data-tooltip="Shows detailed timing information for each processing stage." role="button" tabindex="0" aria-label="Information about Performance metrics">ⓘ</span>
+        </div>
+        <div class="perf-stats" id="perfStats"></div>
+      </div>
+    </section>
+
+    <section id="secActions">
+      <button class="sec-head" type="button" aria-expanded="true">Actions <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <button class="btn accent" id="generateBtn" disabled>Generate Artwork</button>
+        <div class="cancel-btn-container" id="cancelBtnContainer">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button class="btn" id="pauseBtn" style="flex:1;background:#d98f2c;border-color:#d98f2c;color:#fff">Pause</button>
+            <button class="btn" id="resumeBtn" style="flex:1;background:#2a8c4a;border-color:#2a8c4a;color:#fff;display:none">Resume</button>
+          </div>
+          <button class="btn danger" id="cancelBtn">Cancel</button>
+        </div>
+        <button class="btn" id="selectionBtn" style="margin-top:8px">Select Area to Rerun</button>
+        <button class="btn" id="rerunBtn" style="display:none;background:#7c3a9e;border-color:#7c3a9e;color:#fff">Rerun Selection</button>
+        <button class="btn" id="exportBtn" disabled>Export SVG</button>
+        <button class="btn" id="clearBtn">Clear All</button>
+      </div>
+    </section>
+
+    <div class="progress-container" id="progressContainer">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText">Processing...</div>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="preview-section">
+    <div class="preview-header">
+      <h3>Preview</h3>
+    </div>
+    <div class="preview-container" id="previewContainer">
+      <div class="placeholder" id="placeholder">
+        <div class="placeholder-icon">🎨</div>
+        <p>Drop an image to get started</p>
+      </div>
+      <img id="dropPreview" alt="Preview">
+      <div class="canvas-container" id="canvasContainer">
+        <canvas id="outputCanvas"></canvas>
+      </div>
+      <div class="selection-overlay" id="selectionOverlay">
+        <div class="selection-box" id="selectionBox"></div>
+      </div>
+    </div>
+  </div>
+</main>
     <script src="worker-pool.js"></script>
     <script>
         class WebGPUManager {
@@ -985,7 +308,7 @@
                     this.device = await adapter.requestDevice();
                     this.available = true;
                     this.initialized = true;
-                    console.log('WebGPU initialized successfully');
+                    // LOG_REMOVED:'WebGPU initialized successfully');
                     return true;
                 } catch (error) {
                     console.warn('WebGPU initialization failed:', error);
@@ -1786,7 +1109,7 @@
                     this.selection.h = this.canvas.height - this.selection.y;
                 }
 
-                console.log('Selection (Image Coords):', this.selection);
+                // LOG_REMOVED:'Selection (Image Coords):', this.selection);
                 document.getElementById('rerunBtn').style.display = 'block';
             }
 
@@ -1821,10 +1144,15 @@
                 this.livePreviewEnabled = true;
                 this.isPaused = false;
                 this.pauseResolve = null;
-                this.isVisible = true; // Initialize visibility state
-                this.useWorkers = true; // Enable worker support (can be toggled)
+                this.isVisible = true;
+                this.useWorkers = true;
                 this.workerPool = null;
                 this.currentTaskPromise = null;
+                this.palette = null;
+                this.usePalette = true;
+                this.lineWidthVar = null;
+                this.glitchEnabled = false;
+                this.fractalEnabled = false;
             }
 
             setProgressCallback(cb) {
@@ -1899,25 +1227,8 @@
 
             // Memory cleanup after export
             cleanupAfterExport() {
-                console.log('Cleaning up memory after export');
+                // LOG_REMOVED:'Cleaning up memory after export');
                 this.clearProcessingData();
-
-                // Suggest garbage collection if available
-                if (typeof gc === 'function') {
-                    gc();
-                }
-
-                // Check worker pool memory pressure
-                if (this.workerPool) {
-                    this.workerPool.checkMemoryPressure();
-                }
-            }
-
-            // Force garbage collection hint
-            forceGC() {
-                if (typeof gc === 'function') {
-                    gc();
-                }
             }
 
             // Worker support methods
@@ -1928,7 +1239,7 @@
                     if (typeof getWorkerPool === 'function') {
                         this.workerPool = getWorkerPool();
                         await this.workerPool.init();
-                        console.log('Worker pool initialized successfully');
+                        // LOG_REMOVED:'Worker pool initialized successfully');
                         return true;
                     }
                 } catch (error) {
@@ -1998,7 +1309,7 @@
                     const { taskId, worker } = this.currentTaskPromise;
                     
                     if (taskId && worker) {
-                        console.log(`Cancelling worker task: ${taskId}`);
+                        // LOG_REMOVED:`Cancelling worker task: ${taskId}`);
                         worker.postMessage({ type: 'cancel', taskId });
                         this.workerPool.activeTasks.delete(taskId);
                         worker.taskCount--;
@@ -2049,6 +1360,9 @@
                 this.useGPU = options.useGPU !== false;
                 this.useWorkers = options.useWorkers !== false;
                 this.livePreviewManager.setEnabled(this.livePreviewEnabled);
+                this.lineWidthVar = options.variableWidth || false;
+                this.glitchEnabled = options.glitchEffect || false;
+                this.fractalEnabled = options.fractalEffect || false;
 
                 // Initialize worker pool for background processing
                 await this.initWorkerPool();
@@ -2079,6 +1393,10 @@
                 } else {
                     this.grayData = this.toGrayscale(this.imageData);
                 }
+
+                this.palette = this.extractPalette(this.imageData, 5);
+                this.usePalette = true;
+
                 const t2 = performance.now();
 
                 if (this.isCancelled) throw new Error('Cancelled by user');
@@ -2199,7 +1517,7 @@
                 this.rawContours = contourData.raw;
                 const t6 = performance.now();
                  
-                 console.log('Origin points:', this.originPoints.length);
+                 // LOG_REMOVED:'Origin points:', this.originPoints.length);
                  let minVal = Infinity;
                  let maxVal = -Infinity;
                  for (let i = 0; i < this.solution.length; i++) {
@@ -2208,8 +1526,8 @@
                          if (this.solution[i] > maxVal) maxVal = this.solution[i];
                      }
                  }
-                 console.log('Solution range:', minVal === Infinity ? 'N/A' : minVal, maxVal === -Infinity ? 'N/A' : maxVal);
-                 console.log('Contours generated:', this.contours.length);
+                 // LOG_REMOVED:'Solution range:', minVal === Infinity ? 'N/A' : minVal, maxVal === -Infinity ? 'N/A' : maxVal);
+                 // LOG_REMOVED:'Contours generated:', this.contours.length);
 
                 this.perf = {
                     'Total': (t6 - t0).toFixed(1),
@@ -2314,7 +1632,7 @@
                             this.livePreviewManager.renderDistanceField(this.solution, width, height);
                         }
 
-                        console.log('Eikonal solved using GPU (JFA)');
+                        // LOG_REMOVED:'Eikonal solved using GPU (JFA)');
                         return true; // GPU was used
                     } catch (error) {
                         console.warn('GPU Eikonal failed, falling back to workers:', error);
@@ -2339,8 +1657,8 @@
                                 this.livePreviewManager.renderDistanceField(this.solution, width, height);
                             }
 
-                            console.log('Eikonal solved using Worker (CPU FMM)');
-                            console.log(`Worker performance: ${result.performance.totalMs.toFixed(1)}ms`);
+                            // LOG_REMOVED:'Eikonal solved using Worker (CPU FMM)');
+                            // LOG_REMOVED:`Worker performance: ${result.performance.totalMs.toFixed(1)}ms`);
                             return false; // Worker was used
                         }
                     } catch (error) {
@@ -2584,6 +1902,8 @@
                         let cx = seed.x;
                         let cy = seed.y;
 
+                        const curlStrength = 1.2;
+                        const curlFreq = 0.04;
                         for (let step = 0; step < maxPathPoints; step++) {
                             const ix = Math.floor(cx);
                             const iy = Math.floor(cy);
@@ -2591,7 +1911,7 @@
 
                             const idx = iy * width + ix;
                             
-                            // RK2 Integration (Midpoint Method)
+                            // RK2 Integration (Midpoint Method) with curl noise
                             const getGrad = (x, y) => {
                                 const gx = Math.floor(x);
                                 const gy = Math.floor(y);
@@ -2605,9 +1925,11 @@
                             
                             const mag1 = Math.sqrt(g1.x * g1.x + g1.y * g1.y);
                             if (mag1 < 0.001) break;
-                            
-                            const k1x = (g1.x / mag1) * stepSize * direction;
-                            const k1y = (g1.y / mag1) * stepSize * direction;
+
+                            const n1 = this.smoothNoise(cx * curlFreq, cy * curlFreq);
+
+                            const k1x = (g1.x / mag1) * stepSize * direction + (-g1.y / mag1) * n1 * curlStrength;
+                            const k1y = (g1.y / mag1) * stepSize * direction + (g1.x / mag1) * n1 * curlStrength;
                             
                             const midX = cx + k1x * 0.5;
                             const midY = cy + k1y * 0.5;
@@ -2617,9 +1939,11 @@
                             
                             const mag2 = Math.sqrt(g2.x * g2.x + g2.y * g2.y);
                             if (mag2 < 0.001) break;
-                            
-                            const k2x = (g2.x / mag2) * stepSize * direction;
-                            const k2y = (g2.y / mag2) * stepSize * direction;
+
+                            const n2 = this.smoothNoise(midX * curlFreq, midY * curlFreq);
+
+                            const k2x = (g2.x / mag2) * stepSize * direction + (-g2.y / mag2) * n2 * curlStrength;
+                            const k2y = (g2.y / mag2) * stepSize * direction + (g2.x / mag2) * n2 * curlStrength;
 
                             const nx = cx + k2x;
                             const ny = cy + k2y;
@@ -2644,7 +1968,7 @@
                 }
 
                 const tEnd = performance.now();
-                console.log(`Streamline tracing took ${(tEnd - tStart).toFixed(1)}ms for ${paths.length} paths`);
+                // LOG_REMOVED:`Streamline tracing took ${(tEnd - tStart).toFixed(1)}ms for ${paths.length} paths`);
 
                 // Post-process: Centralized Smoothing & Optimization
                 this.updateProgress(showProgress, 95, 'Optimizing paths...');
@@ -2698,7 +2022,13 @@
                 const getRadius = (x, y) => {
                     const idx = Math.floor(y) * width + Math.floor(x);
                     const val = this.grayData[idx];
-                    return minRadius + (val * (maxRadius - minRadius));
+                    const gx = (x < width - 1) ? Math.abs(this.grayData[idx] - this.grayData[idx + 1]) : 0;
+                    const gy = (y < height - 1) ? Math.abs(this.grayData[idx] - this.grayData[idx + width]) : 0;
+                    const grad = Math.min(1, gx + gy);
+                    const brightFactor = 1 - val;
+                    const gradBoost = 1 - grad * 0.7;
+                    const radius = minRadius + (maxRadius - minRadius) * Math.pow(brightFactor, 0.6) * gradBoost;
+                    return Math.max(minRadius, Math.min(maxRadius, radius));
                 };
 
                 const insertPoint = (p) => {
@@ -2823,6 +2153,8 @@
                 while (remaining > 0) {
                     if (remaining % 1000 === 0) {
                         this.updateProgress(true, 90 + (1 - remaining / points.length) * 10, `TSP: ${remaining} left...`);
+                        await this.checkPause();
+                        if (this.isCancelled) throw new Error('Cancelled by user');
                         await this.yieldToBrowser();
                     }
 
@@ -2869,14 +2201,147 @@
                     } else break;
                 }
 
-                // Smooth the TSP path
-                const smoothed = this.postProcessPaths([orderedPoints], {
+                const improved = this.optimizeTSP2Opt(orderedPoints);
+
+                const smoothed = this.postProcessPaths([improved], {
                     ...options,
-                    contourSmoothness: 0.5, // Force some smoothing for TSP
-                    optimizePath: false // Already optimized
+                    contourSmoothness: 0.5,
+                    optimizePath: false
                 });
 
                 return { contours: smoothed, raw: [], skippedJoining: false };
+            }
+
+            getPathWidth(path, baseWidth) {
+                if (!this.lineWidthVar || !this.imageData) return baseWidth;
+                let r = 0, g = 0, b = 0, n = 0;
+                const data = this.imageData.data;
+                const w = this.canvas.width;
+                for (const p of path) {
+                    if (!p || p.x === undefined) continue;
+                    const ix = Math.floor(p.x), iy = Math.floor(p.y);
+                    if (ix >= 0 && ix < w && iy >= 0 && iy < this.canvas.height) {
+                        const idx = (iy * w + ix) * 4;
+                        r += data[idx]; g += data[idx + 1]; b += data[idx + 2];
+                        n++;
+                    }
+                }
+                if (n === 0) return baseWidth;
+                const brightness = (r + g + b) / (n * 765);
+                return baseWidth * (0.5 + (1 - brightness));
+            }
+
+            optimizeTSP2Opt(points) {
+                if (points.length < 4) return points;
+                const pts = [...points];
+                const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+                const n = pts.length;
+                let improved = true;
+                let maxPasses = Math.max(5, Math.min(20, Math.floor(100000 / n)));
+                while (improved && maxPasses-- > 0) {
+                    improved = false;
+                    for (let i = 0; i < n - 2; i++) {
+                        for (let j = i + 2; j < n - 1; j++) {
+                            const d1 = d2(pts[i], pts[i + 1]) + d2(pts[j], pts[j + 1]);
+                            const d2_swapped = d2(pts[i], pts[j]) + d2(pts[i + 1], pts[j + 1]);
+                            if (d2_swapped < d1) {
+                                let left = i + 1, right = j;
+                                while (left < right) {
+                                    [pts[left], pts[right]] = [pts[right], pts[left]];
+                                    left++; right--;
+                                }
+                                improved = true;
+                            }
+                        }
+                    }
+                }
+                return pts;
+            }
+
+            extractPalette(imageData, k = 5) {
+                const data = imageData.data;
+                const pixels = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    pixels.push([data[i] / 255, data[i + 1] / 255, data[i + 2] / 255]);
+                }
+                const n = pixels.length;
+                if (n === 0) return ['#000000'];
+
+                const idx = Array.from({ length: n }, (_, i) => i);
+                const shuffled = idx.sort(() => Math.random() - 0.5);
+
+                const centroids = [];
+                for (let i = 0; i < k; i++) {
+                    const pi = pixels[shuffled[i % n]];
+                    centroids.push([pi[0], pi[1], pi[2]]);
+                }
+
+                const assignments = new Uint32Array(n);
+                for (let iter = 0; iter < 15; iter++) {
+                    let changed = false;
+                    for (let i = 0; i < n; i++) {
+                        let best = 0, bestD = Infinity;
+                        for (let c = 0; c < k; c++) {
+                            const dx = pixels[i][0] - centroids[c][0];
+                            const dy = pixels[i][1] - centroids[c][1];
+                            const dz = pixels[i][2] - centroids[c][2];
+                            const d = dx * dx + dy * dy + dz * dz;
+                            if (d < bestD) { bestD = d; best = c; }
+                        }
+                        if (assignments[i] !== best) { assignments[i] = best; changed = true; }
+                    }
+                    if (!changed) break;
+
+                    for (let c = 0; c < k; c++) {
+                        centroids[c] = [0, 0, 0];
+                    }
+                    const counts = new Uint32Array(k);
+                    for (let i = 0; i < n; i++) {
+                        const c = assignments[i];
+                        centroids[c][0] += pixels[i][0];
+                        centroids[c][1] += pixels[i][1];
+                        centroids[c][2] += pixels[i][2];
+                        counts[c]++;
+                    }
+                    for (let c = 0; c < k; c++) {
+                        if (counts[c] > 0) {
+                            centroids[c][0] /= counts[c];
+                            centroids[c][1] /= counts[c];
+                            centroids[c][2] /= counts[c];
+                        }
+                    }
+                }
+
+                return centroids
+                    .filter(c => c[0] + c[1] + c[2] > 0)
+                    .sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]))
+                    .map(c => {
+                        const r = Math.floor(c[0] * 255);
+                        const g = Math.floor(c[1] * 255);
+                        const b = Math.floor(c[2] * 255);
+                        return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+                    });
+            }
+
+            computeDominantAngle(width, height) {
+                let maxGrad = 0, sumSin = 0, sumCos = 0, count = 0;
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        const idx = y * width + x;
+                        const gx = (this.grayData[idx + 1] - this.grayData[idx - 1]);
+                        const gy = (this.grayData[idx + width] - this.grayData[idx - width]);
+                        const mag = gx * gx + gy * gy;
+                        if (mag > 0.01) {
+                            const angle = Math.atan2(gy, gx);
+                            sumSin += Math.sin(angle * 2) * mag;
+                            sumCos += Math.cos(angle * 2) * mag;
+                            if (mag > maxGrad) maxGrad = mag;
+                            count++;
+                        }
+                    }
+                }
+                if (count === 0) return -Math.PI / 4;
+                return Math.atan2(sumSin, sumCos) / 2;
             }
 
             async extractHatch(width, height, options) {
@@ -2888,18 +2353,13 @@
 
                 const lines = [];
                 const spacing = interval;
-                // Use grayscale data to determine density
-                // We'll create layers of hatching
-                // Layer 1: -45 deg (TL to BR), covers light gray to black
-                // Layer 2: 45 deg (TR to BL), covers medium gray to black
-                // Layer 3: Vertical, covers dark gray to black
-                // Layer 4: Horizontal, covers blackest
+                const dominantAngle = this.computeDominantAngle(width, height);
 
                 const layers = [
-                    { angle: -Math.PI / 4, t: threshold + 0.2 },
-                    { angle: Math.PI / 4, t: threshold },
-                    { angle: 0, t: threshold - 0.2 },
-                    { angle: Math.PI / 2, t: threshold - 0.3 }
+                    { angle: dominantAngle + Math.PI / 4, t: threshold + 0.15 },
+                    { angle: dominantAngle - Math.PI / 4, t: threshold },
+                    { angle: dominantAngle, t: threshold - 0.2 },
+                    { angle: dominantAngle + Math.PI / 2, t: threshold - 0.25 }
                 ];
 
                 const maxLength = Math.sqrt(width * width + height * height);
@@ -2907,39 +2367,16 @@
                 for (let l = 0; l < layers.length; l++) {
                     const layer = layers[l];
                     const angle = layer.angle;
-                    const layerThreshold = Math.max(0.1, layer.t); // Ensure valid threshold
+                    const layerThreshold = Math.max(0.1, layer.t);
 
-                    const cos = Math.cos(angle);
-                    const sin = Math.sin(angle);
-                    
-                    // Rotate coordinate system to scanlines
-                    // We scan along a rotated grid
-                    
-                    // Bounding box of rotated image
-                    // Simple approach: cast rays across the image
-                    
-                    // For fixed spacing, we can iterate along a perpendicular axis
-                    // Center is width/2, height/2
-                    
                     const cx = width / 2;
                     const cy = height / 2;
+                    let hatchCheck = 0;
 
-                    // Iterate 'd' (distance from center along normal)
                     for (let d = -maxLength; d < maxLength; d += spacing) {
-                        // Line equation: x*cos(a) + y*sin(a) = d
-                        // We walk along the line
-                        
                         let segments = [];
                         let currentSegment = null;
 
-                        // Walk along the line
-                        // Perpendicular vector (-sin, cos)
-                        // p = center + d*normal + t*tangent
-                        
-                        const nx = Math.cos(angle - Math.PI/2);
-                        const ny = Math.sin(angle - Math.PI/2);
-                        
-                        // Start point on the line (closest to center)
                         const px = cx + d * Math.cos(angle + Math.PI/2);
                         const py = cy + d * Math.sin(angle + Math.PI/2);
 
@@ -2971,21 +2408,24 @@
                             }
                         }
                         if (currentSegment && currentSegment.length > 5) segments.push(currentSegment);
-                        
-                        // Simplify segments to just start/end to keep it clean hatching
+
                         segments.forEach(seg => {
                             lines.push([seg[0], seg[seg.length-1]]);
                         });
+
+                        hatchCheck++;
+                        if (hatchCheck % 20 === 0) {
+                            await this.checkPause();
+                            if (this.isCancelled) throw new Error('Cancelled by user');
+                            await this.yieldToBrowser();
+                        }
                     }
 
                      if (showProgress) {
                          this.updateProgress(showProgress, 60 + (l / layers.length) * 30, `Hatching (Layer ${l+1})...`);
-                         await this.checkPause();
-                         if (this.isCancelled) throw new Error('Cancelled by user');
                      }
                 }
 
-                // Optimize lines
                 const optimized = this.postProcessPaths(lines, { ...options, contourSmoothness: 0, simplification: 0.5 });
                 
                 return { contours: optimized, raw: [], skippedJoining: false };
@@ -3061,7 +2501,7 @@
                 }
                 
                 this.contours = newContours;
-                console.log(`Removed ${removedCount} contours in selected region`);
+                // LOG_REMOVED:`Removed ${removedCount} contours in selected region`);
                 
                 // Also clear the canvas area
                 this.ctx.fillStyle = '#ffffff';
@@ -3139,24 +2579,81 @@
                 return this.getSVG(width, height, lineColor, lineWidth, antiAlias);
             }
 
+            applyGlitch(contours) {
+                if (!this.glitchEnabled) return contours;
+                const result = [];
+                for (const path of contours) {
+                    if (!path || path.length < 5) { result.push(path); continue; }
+                    const glitchInterval = 4 + Math.floor(Math.random() * 6);
+                    const newPath = path.map((p, i) => {
+                        if (i > 0 && i % glitchInterval === 0) {
+                            const offset = (Math.random() - 0.5) * 8;
+                            return { x: p.x + offset, y: p.y };
+                        }
+                        return p;
+                    });
+                    result.push(newPath);
+                }
+                return result;
+            }
+
+            applyFractal(contours) {
+                if (!this.fractalEnabled) return contours;
+                const result = [];
+                for (const path of contours) {
+                    if (!path || path.length < 2) { result.push(path); continue; }
+                    const newPath = [];
+                    for (let i = 0; i < path.length - 1; i++) {
+                        const a = path[i], b = path[i + 1];
+                        newPath.push(a);
+                        const dx = b.x - a.x, dy = b.y - a.y;
+                        const len = Math.sqrt(dx * dx + dy * dy);
+                        if (len > 8) {
+                            const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+                            const px = -dy / len * len * 0.15;
+                            const py = dx / len * len * 0.15;
+                            newPath.push({ x: mx + px, y: my + py });
+                        }
+                    }
+                    newPath.push(path[path.length - 1]);
+                    result.push(newPath);
+                }
+                return result;
+            }
+
             drawContours() {
-                this.ctx.beginPath();
-                for (const path of this.contours) {
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                const palette = (this.usePalette && this.palette && this.palette.length > 0) ? this.palette : null;
+                const baseLineWidth = this.ctx.lineWidth;
+                let renderContours = this.contours;
+                if (this.glitchEnabled || this.fractalEnabled) {
+                    renderContours = this.applyGlitch(this.contours);
+                    renderContours = this.applyFractal(renderContours);
+                }
+                for (let pi = 0; pi < renderContours.length; pi++) {
+                    const path = renderContours[pi];
                     if (!path || path.length < 2) continue;
-                    
+
+                    this.ctx.beginPath();
+                    if (palette) {
+                        this.ctx.strokeStyle = palette[pi % palette.length];
+                    }
+                    if (this.lineWidthVar) {
+                        this.ctx.lineWidth = this.getPathWidth(path, baseLineWidth);
+                    }
+
                     const validPoints = path.filter(p => p && p.x !== undefined && p.y !== undefined);
                     if (validPoints.length < 2) continue;
 
                     this.ctx.moveTo(validPoints[0].x, validPoints[0].y);
 
-                    // Smooth with quadratic Bézier curves
                     for (let i = 1; i < validPoints.length - 2; i++) {
                         const xc = (validPoints[i].x + validPoints[i + 1].x) / 2;
                         const yc = (validPoints[i].y + validPoints[i + 1].y) / 2;
                         this.ctx.quadraticCurveTo(validPoints[i].x, validPoints[i].y, xc, yc);
                     }
 
-                    // Last segment
                     if (validPoints.length > 2) {
                         this.ctx.quadraticCurveTo(
                             validPoints[validPoints.length - 2].x,
@@ -3167,8 +2664,10 @@
                     } else {
                         this.ctx.lineTo(validPoints[1].x, validPoints[1].y);
                     }
+
+                    this.ctx.stroke();
                 }
-                this.ctx.stroke();
+                this.ctx.lineWidth = baseLineWidth;
             }
 
             async renderDebugVisualization(width, height, lineColor, lineWidth) {
@@ -3255,40 +2754,47 @@
             }
 
             getSVG(width, height, lineColor, lineWidth, antiAlias) {
+                const palette = (this.usePalette && this.palette && this.palette.length > 0) ? this.palette : null;
+                const strokeWidth = this.lineWidthVar || lineWidth;
+                let renderContours = this.contours;
+                if (this.glitchEnabled || this.fractalEnabled) {
+                    renderContours = this.applyGlitch(this.contours);
+                    renderContours = this.applyFractal(renderContours);
+                }
                 let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect width="${width}" height="${height}" fill="white"/>
-  <g stroke="${lineColor}" stroke-width="${lineWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round">`;
+  <rect width="${width}" height="${height}" fill="white"/>`;
 
-                for (const path of this.contours) {
+                for (let pi = 0; pi < renderContours.length; pi++) {
+                    const path = renderContours[pi];
                     if (!path || path.length < 2) continue;
 
                     const validPoints = this.validatePath(path);
                     if (validPoints.length < 2) continue;
 
-                    // Start path at first point
+                    const color = palette ? palette[pi % palette.length] : lineColor;
+                    const lw = this.lineWidthVar ? this.getPathWidth(path, strokeWidth) : strokeWidth;
+                    svg += `\n  <path stroke="${color}" stroke-width="${lw.toFixed(2)}" fill="none" stroke-linecap="round" stroke-linejoin="round" d="`;
+
                     let pathData = `M${validPoints[0].x.toFixed(2)},${validPoints[0].y.toFixed(2)}`;
 
                     if (validPoints.length === 2) {
-                        // Simple line for 2-point paths
                         pathData += ` L${validPoints[1].x.toFixed(2)},${validPoints[1].y.toFixed(2)}`;
                     } else {
-                        // Smooth with quadratic Bézier curves (same as canvas rendering)
                         for (let i = 1; i < validPoints.length - 2; i++) {
                             const xc = (validPoints[i].x + validPoints[i + 1].x) / 2;
                             const yc = (validPoints[i].y + validPoints[i + 1].y) / 2;
                             pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${xc.toFixed(2)},${yc.toFixed(2)}`;
                         }
 
-                        // Last segment
                         const i = validPoints.length - 2;
                         pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${validPoints[validPoints.length - 1].x.toFixed(2)},${validPoints[validPoints.length - 1].y.toFixed(2)}`;
                     }
 
-                    svg += `\n    <path d="${pathData}"/>`;
+                    svg += pathData + '"/>';
                 }
 
-                svg += '\n  </g>\n</svg>';
+                svg += '\n</svg>';
                 return svg;
             }
 
@@ -3366,96 +2872,73 @@
                 return { gradX, gradY, gradMag };
             }
 
+            hashNoise(x, y) {
+                let h = (Math.floor(x) * 374761393 + Math.floor(y) * 668265263) | 0;
+                h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+                return ((h ^ (h >>> 16)) / 2147483647);
+            }
+
+            smoothNoise(x, y) {
+                const ix = Math.floor(x), iy = Math.floor(y);
+                const fx = x - ix, fy = y - iy;
+                const sx = fx * fx * (3 - 2 * fx);
+                const sy = fy * fy * (3 - 2 * fy);
+                const v00 = this.hashNoise(ix, iy);
+                const v10 = this.hashNoise(ix + 1, iy);
+                const v01 = this.hashNoise(ix, iy + 1);
+                const v11 = this.hashNoise(ix + 1, iy + 1);
+                return v00 + (v10 - v00) * sx + (v01 - v00) * sy + (v11 - v01 - v10 + v00) * sx * sy;
+            }
+
+            noiseDisplace(x, y, amp) {
+                return amp * this.smoothNoise(x * 0.5 + 100, y * 0.5 + 200)
+                     + amp * 0.5 * this.smoothNoise(x * 1.1 + 300, y * 1.1 + 400);
+            }
+
              generateAdaptiveLevels(solution, width, height, interval, minVal, maxVal, gradMag) {
                  const levels = [];
                  const range = maxVal - minVal;
-
-                 // Calculate how many levels we'd get with fixed intervals
                  const fixedLevelCount = Math.floor(range / interval);
 
-                 // If range is small or gradient is weak, use original approach
-                 if (range < interval * 3 || fixedLevelCount < 3) {
-                     // Use original marching squares logic - guaranteed to work
-                     for (let l = minVal + interval; l < maxVal; l += interval) {
-                         levels.push(l);
-                     }
-                     console.log('Using original level generation:', levels.length, 'levels');
-                     return levels;
-                 }
-
-                 // Otherwise use adaptive approach (for better detail preservation)
-                 const maxIterations = Math.min(5000, fixedLevelCount * 2);
-                 const minAdaptiveInterval = Math.max(interval * 0.3, 0.15); // Increased minimum interval
-                 const maxAdaptiveInterval = interval * 2.0; // Added maximum interval limit
                  let currentLevel = minVal + interval;
                  let iterations = 0;
-
-                 // Memory-efficient gradient normalization (no array spread to avoid stack overflow)
-                 let maxGrad = 0;
-                 let gradSumTotal = 0;
-                 let validGradCount = 0;
-                 for (let i = 0; i < gradMag.length; i++) {
-                     if (gradMag[i] > maxGrad) maxGrad = gradMag[i];
-                     if (gradMag[i] > 0) {
-                         gradSumTotal += gradMag[i];
-                         validGradCount++;
-                     }
-                 }
-                 const gradNormalization = 1 / (maxGrad || 1);
-                 const avgGradient = validGradCount > 0 ? gradSumTotal / validGradCount : 0.5;
-
-                 console.log('Adaptive contours - Gradient stats:', {
-                     maxGrad: maxGrad.toFixed(3),
-                     avgGrad: avgGradient.toFixed(3),
-                     range: range.toFixed(2),
-                     fixedLevelCount: fixedLevelCount
-                 });
+                 const maxIterations = Math.min(5000, fixedLevelCount * 2);
 
                  while (currentLevel < maxVal && iterations < maxIterations) {
                      iterations++;
                      levels.push(currentLevel);
 
-                     // Compute average gradient in the region around this level
                      let gradSum = 0;
                      let count = 0;
-
                      for (let y = 1; y < height - 1; y++) {
                          for (let x = 1; x < width - 1; x++) {
                              const idx = y * width + x;
                              if (solution[idx] >= Infinity) continue;
-
                              const levelDist = Math.abs(solution[idx] - currentLevel);
                              if (levelDist < interval * 2) {
-                                 gradSum += gradMag[idx] * gradNormalization;
+                                 gradSum += gradMag[idx];
                                  count++;
                              }
                          }
                      }
 
-                     const avgGrad = count > 0 ? gradSum / count : avgGradient;
-                     
-                     // Improved adaptation formula - more conservative and bounded
-                     // This prevents extreme interval variations that can cause issues
-                     const adaptFactorBase = 0.8 + 0.2 * Math.exp(-avgGrad * 1.5); // Less aggressive adaptation
-                     const adaptFactor = Math.max(0.5, Math.min(1.5, adaptFactorBase)); // Bound the factor
-                     const nextInterval = Math.max(minAdaptiveInterval, Math.min(maxAdaptiveInterval, interval * adaptFactor));
+                     const avgGradLocal = count > 0 ? gradSum / count : 0.5;
 
-                     console.log(`Level ${iterations}: ${currentLevel.toFixed(2)} -> interval: ${nextInterval.toFixed(3)}, grad: ${avgGrad.toFixed(3)}, factor: ${adaptFactor.toFixed(3)}`);
+                     const phiMod = 1 + 0.3 * Math.sin(currentLevel * 1.618033988749895);
+                     const gradMod = 0.7 + 0.6 * (1 - Math.min(1, avgGradLocal));
 
-                     currentLevel += nextInterval;
+                     currentLevel += interval * phiMod * gradMod;
                  }
 
-                 // Improved fallback logic - more nuanced decision
-                 const minimumLevels = Math.min(5, Math.max(3, Math.floor(fixedLevelCount * 0.3)));
-                 if (levels.length < minimumLevels) {
-                     console.warn(`Adaptive level generation produced too few levels (${levels.length} < ${minimumLevels}), falling back to original`);
+                 if (levels.length < 3) {
                      levels.length = 0;
-                     for (let l = minVal + interval; l < maxVal; l += interval) {
-                         levels.push(l);
+                     currentLevel = minVal + interval;
+                     while (currentLevel < maxVal) {
+                         levels.push(currentLevel);
+                         currentLevel += interval * (1 + 0.3 * Math.sin(currentLevel * 1.618033988749895));
                      }
                  }
 
-                 console.log('Adaptive level generation:', levels.length, 'levels from range', range.toFixed(2), 'avg interval:', levels.length > 1 ? (range / levels.length).toFixed(3) : 'N/A');
                  return levels;
              }
 
@@ -3504,10 +2987,11 @@
                 const grid = Array(gridSize * gridSize).fill().map(() => []);
 
                 segments.forEach((seg, index) => {
-                    const cellX = Math.min(gridSize - 1, Math.floor(seg.x1 / cellWidth));
-                    const cellY = Math.min(gridSize - 1, Math.floor(seg.y1 / cellHeight));
+                    if (!isFinite(seg.x1) || !isFinite(seg.y1) || !isFinite(seg.x2) || !isFinite(seg.y2)) return;
+                    const cellX = Math.min(gridSize - 1, Math.max(0, Math.floor(seg.x1 / cellWidth)));
+                    const cellY = Math.min(gridSize - 1, Math.max(0, Math.floor(seg.y1 / cellHeight)));
                     const cellIdx = cellY * gridSize + cellX;
-                    grid[cellIdx].push(index);
+                    if (grid[cellIdx]) grid[cellIdx].push(index);
                 });
 
                 return {
@@ -3679,14 +3163,21 @@
                             if (v11 >= level) code |= 8;
 
                             const lines = [];
+                            const nAmp = interval * 0.08;
                             const addLine = (x1, y1, x2, y2) => {
-                                // Apply edge snapping if enabled
+                                const rx1 = x + x1 + this.noiseDisplace(x + x1, y + y1, nAmp);
+                                const ry1 = y + y1 + this.noiseDisplace(y + y1, x + x1, nAmp);
+                                const rx2 = x + x2 + this.noiseDisplace(x + x2, y + y2, nAmp);
+                                const ry2 = y + y2 + this.noiseDisplace(y + y2, x + x2, nAmp);
+                                if (!isFinite(rx1) || !isFinite(ry1) || !isFinite(rx2) || !isFinite(ry2)) return;
                                 if (edgeGuidance && edgeSensitivity > 0.1) {
-                                    const p1 = this.snapToEdge(x + x1, y + y1, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
-                                    const p2 = this.snapToEdge(x + x2, y + y2, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
-                                    lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+                                    const p1 = this.snapToEdge(rx1, ry1, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
+                                    const p2 = this.snapToEdge(rx2, ry2, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
+                                    if (p1 && isFinite(p1.x) && isFinite(p1.y) && p2 && isFinite(p2.x) && isFinite(p2.y)) {
+                                        lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+                                    }
                                 } else {
-                                    lines.push({ x1: x + x1, y1: y + y1, x2: x + x2, y2: y + y2 });
+                                    lines.push({ x1: rx1, y1: ry1, x2: rx2, y2: ry2 });
                                 }
                             };
 
@@ -3767,7 +3258,7 @@
                      for (let l = minVal + interval; l < maxVal; l += interval) {
                          fallbackLevels.push(l);
                      }
-                     console.log('Falling back to basic level generation with', fallbackLevels.length, 'levels');
+                     // LOG_REMOVED:'Falling back to basic level generation with', fallbackLevels.length, 'levels');
                      
                      // Re-run with fallback levels
                      const fallbackContours = [];
@@ -4192,11 +3683,7 @@
 
                 // Trigger memory cleanup when tab becomes visible after being hidden
                 if (isPageVisible && marchingWaves.workerPool) {
-                    // Terminate idle workers that accumulated while hidden
                     marchingWaves.workerPool.terminateIdleWorkers();
-
-                    // Suggest garbage collection
-                    marchingWaves.forceGC();
                 }
             }
 
@@ -4250,12 +3737,12 @@
             const statusIcon = document.getElementById('gpuStatusIcon');
 
             if (available) {
-                console.log('WebGPU acceleration enabled (grayscale + Eikonal JFA)');
+                // LOG_REMOVED:'WebGPU acceleration enabled (grayscale + Eikonal JFA)');
                 statusEl.className = 'status success';
                 statusText.textContent = 'ACTIVE (WebGPU)';
                 statusIcon.textContent = '⚡';
             } else {
-                console.log('Using CPU fallback (WebGPU not available)');
+                // LOG_REMOVED:'Using CPU fallback (WebGPU not available)');
                 statusEl.className = 'status warning';
                 statusText.textContent = 'INACTIVE (CPU Fallback)';
                 statusIcon.textContent = '⚠️';
@@ -4271,12 +3758,12 @@
 
                 if (success && marchingWaves.workerPool) {
                     const stats = marchingWaves.workerPool.getStats();
-                    console.log('Web Workers enabled for background processing', stats);
+                    // LOG_REMOVED:'Web Workers enabled for background processing', stats);
                     workerStatusEl.className = 'status success';
                     workerStatusText.textContent = `ACTIVE (${stats.totalWorkers} Workers)`;
                     workerStatusIcon.textContent = '⚡';
                 } else {
-                    console.log('Web Workers not available, using main thread');
+                    // LOG_REMOVED:'Web Workers not available, using main thread');
                     workerStatusEl.className = 'status warning';
                     workerStatusText.textContent = 'INACTIVE (Main Thread Only)';
                     workerStatusIcon.textContent = '⚠️';
@@ -4380,7 +3867,7 @@
         function requestNotificationPermission() {
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission().then(permission => {
-                    console.log(`Notification permission: ${permission}`);
+                    // LOG_REMOVED:`Notification permission: ${permission}`);
                 });
             }
         }
@@ -4437,6 +3924,9 @@
                 invert: document.getElementById('invert').checked,
                 lineColor: document.getElementById('lineColor').value,
                 antiAlias: document.getElementById('antiAlias').checked,
+                variableWidth: document.getElementById('varWidth').checked,
+                glitchEffect: document.getElementById('glitchEffect').checked,
+                fractalEffect: document.getElementById('fractalEffect').checked,
                 maxSegments: parseInt(document.getElementById('maxSegments').value),
                 skipJoining: document.getElementById('skipJoining').checked,
                 showProgress: document.getElementById('showProgress').checked,
@@ -4825,6 +4315,9 @@
                 invert: document.getElementById('invert').checked,
                 lineColor: document.getElementById('lineColor').value,
                 antiAlias: document.getElementById('antiAlias').checked,
+                variableWidth: document.getElementById('varWidth').checked,
+                glitchEffect: document.getElementById('glitchEffect').checked,
+                fractalEffect: document.getElementById('fractalEffect').checked,
                 maxSegments: parseInt(document.getElementById('maxSegments').value),
                 skipJoining: document.getElementById('skipJoining').checked,
                 showProgress: document.getElementById('showProgress').checked,
@@ -4835,7 +4328,6 @@
                 livePreview: document.getElementById('livePreview').checked,
                 useGPU: document.getElementById('useGPU').checked,
                 useWorkers: document.getElementById('useWorkers').checked,
-                // New adaptive contour parameters
                 edgeGuidance: document.getElementById('edgeGuidance').checked,
                 edgeSensitivity: parseFloat(document.getElementById('edgeSensitivity').value),
                 detailLevel: parseFloat(document.getElementById('detailLevel').value),
@@ -4990,142 +4482,9 @@
             });
         })();
 
-        // Create a Web Worker for intensive computations that can continue running in the background
-        // This will help with processing when the tab is inactive
-        function createProcessingWorker() {
-            const workerCode = `
-                // Worker for intensive computations
-                self.onmessage = function(e) {
-                    const { type, data } = e.data;
-
-                    switch(type) {
-                        case 'processContours':
-                            // Simulate contour processing
-                            const result = processContours(data);
-                            self.postMessage({ type: 'result', data: result });
-                            break;
-                        case 'solveEikonal':
-                            // Simulate Eikonal equation solving
-                            const solution = solveEikonal(data);
-                            self.postMessage({ type: 'result', data: solution });
-                            break;
-                        default:
-                            self.postMessage({ type: 'error', message: 'Unknown operation' });
-                    }
-                };
-
-                function processContours(data) {
-                    // Simulate contour processing work
-                    const { width, height, interval, maxSegments } = data;
-
-                    // This is a simplified simulation - in a real implementation,
-                    // this would contain the actual contour processing algorithm
-                    const startTime = Date.now();
-                    let segmentsProcessed = 0;
-
-                    // Simulate processing work
-                    for (let i = 0; i < maxSegments && (Date.now() - startTime) < 1000; i++) {
-                        segmentsProcessed++;
-                        // Simulate some computation
-                        Math.random() * width * height;
-                    }
-
-                    return {
-                        segmentsProcessed,
-                        timeElapsed: Date.now() - startTime,
-                        completed: segmentsProcessed >= maxSegments
-                    };
-                }
-
-                function solveEikonal(data) {
-                    // Simulate Eikonal equation solving
-                    const { width, height, threshold } = data;
-
-                    const startTime = Date.now();
-                    let cellsProcessed = 0;
-
-                    // Simulate solving work
-                    for (let y = 0; y < height && (Date.now() - startTime) < 1000; y++) {
-                        for (let x = 0; x < width; x++) {
-                            cellsProcessed++;
-                            // Simulate some computation
-                            const val = Math.sqrt(x*x + y*y);
-                            if (val < threshold * 100) {
-                                // Some processing
-                            }
-                        }
-                    }
-
-                    return {
-                        cellsProcessed,
-                        timeElapsed: Date.now() - startTime,
-                        completed: cellsProcessed >= width * height
-                    };
-                }
-            `;
-
-            const blob = new Blob([workerCode], { type: 'application/javascript' });
-            return new Worker(URL.createObjectURL(blob));
-        }
-
-        // Initialize worker if supported
-        let processingWorker = null;
-        if (window.Worker) {
-            processingWorker = createProcessingWorker();
-
-            // Handle messages from worker
-            processingWorker.onmessage = function(e) {
-                const { type, data } = e.data;
-
-                if (type === 'result') {
-                    console.log('Worker result:', data);
-                    // Update UI or continue processing based on result
-                } else if (type === 'error') {
-                    console.error('Worker error:', data.message);
-                }
-            };
-
-            // Handle worker errors
-            processingWorker.onerror = function(error) {
-                console.error('Worker error:', error);
-            };
-        }
-
-        // Function to offload intensive computation to worker
-        function offloadToWorker(taskType, taskData) {
-            if (processingWorker) {
-                processingWorker.postMessage({ type: taskType, data: taskData });
-                return true;
-            }
-            return false;
-        }
-
-        // Update MarchingWaves to use workers when possible
-        if (window.marchingWaves) {
-            // Add method to use worker for intensive tasks
-            marchingWaves.offloadComputation = function(taskType, taskData) {
-                return offloadToWorker(taskType, taskData);
-            };
-        }
-
-        // Test function to verify tab switching functionality
-        function testTabSwitching() {
-            console.log('Testing tab switching functionality...');
-
-            // Simulate the visibility change
-            console.log('Current visibility state:', isPageVisible);
-            console.log('Page title:', document.title);
-
-            // This function can be expanded to perform more comprehensive tests
-            console.log('Tab switching functionality test completed.');
-        }
-
-        // Expose test function globally for manual testing
-        window.testTabSwitching = testTabSwitching;
-
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
-            console.log('Cleaning up before page unload');
+            // LOG_REMOVED:'Cleaning up before page unload');
 
             // Clear processing data
             if (marchingWaves) {
@@ -5143,11 +4502,6 @@
                 if (pool) {
                     pool.terminateAll();
                 }
-            }
-
-            // Force garbage collection if available
-            if (typeof gc === 'function') {
-                gc();
             }
         });
     </script>
