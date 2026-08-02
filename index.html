@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0d12">
 <title>Marching Waves · Contour Art Generator</title>
-<meta name="description" content="Generate contour-based artworks from images using the Eikonal Equation with GPU acceleration.">
+<meta name="description" content="Generate contour-based artworks from images using the Eikonal Equation.">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -16,7 +16,7 @@
   <div class="tagline">Generate contour-based artworks from images</div>
   <div class="head-spacer"></div>
   <div class="readout" id="readout" aria-live="polite">
-    <span id="gpuStatusText">Initializing GPU…</span> ·
+    <span id="gpuStatusText">CPU</span> ·
     <span id="workerStatusText">Starting workers…</span>
   </div>
   <a class="about-link" href="about.html" aria-label="About Marching Waves"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="lbl">About</span></a>
@@ -24,11 +24,11 @@
 
 <main id="main">
   <div class="sidebar">
-    <div id="gpuStatus" class="status info" style="display:flex;margin:0 14px 6px">
-      <span id="gpuStatusIcon" style="margin-right:6px">&#9881;</span> GPU: <span id="gpuStatusText2">Initializing...</span>
-    </div>
-    <div id="workerStatus" class="status info" style="display:flex;margin:0 14px 14px">
+    <div id="workerStatus" class="status info" style="display:flex;margin:0 14px">
       <span id="workerStatusIcon" style="margin-right:6px">&#9881;</span> Workers: <span id="workerStatusText2">Initializing...</span>
+    </div>
+    <div id="gpuStatus" class="status info" style="display:flex;margin:6px 14px 0">
+      <span id="gpuStatusIcon" style="margin-right:6px">&#9889;</span> GPU: <span id="gpuStatusText2">Initializing...</span>
     </div>
 
     <section id="secInput">
@@ -52,7 +52,8 @@
             <span class="info-icon" data-tooltip="Select the primary generation algorithm. Contours follow elevation lines, while Streamlines follow the flow of the image gradient." role="button" tabindex="0" aria-label="Information about Modes">ⓘ</span>
           </div>
           <select id="modeSelect">
-            <option value="contours">Marching Contours</option>
+            <option value="luminance">Luminance Contours</option>
+            <option value="contours">Eikonal Contours</option>
             <option value="streamlines">Flow Streamlines</option>
             <option value="stipple">Weighted Stipple</option>
             <option value="tsp">TSP Art (Continuous Line)</option>
@@ -66,6 +67,7 @@
           </div>
           <select id="presetSelect">
             <option value="custom">Custom</option>
+            <option value="natural-contours">Natural Contours</option>
             <option value="topo-map">Topographic Map</option>
             <option value="blueprint">Blueprint</option>
             <option value="flowing-silk">Flowing Silk</option>
@@ -117,6 +119,20 @@
         <div class="field">
           <div class="field-top"><label for="featureImportance">Feature Importance</label><span class="ft-right"><span class="val" id="featureImportanceValue">0.60</span></span></div>
           <input type="range" id="featureImportance" min="0" max="1" step="0.05" value="0.6">
+        </div>
+      </div>
+    </section>
+
+    <section id="secPreprocess">
+      <button class="sec-head" type="button" aria-expanded="true">Preprocess <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="field">
+          <div class="field-top"><label for="blurRadius">Denoise (Blur)</label><span class="ft-right"><span class="val" id="blurRadiusValue">0</span></span></div>
+          <input type="range" id="blurRadius" min="0" max="8" step="1" value="0">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="contrast">Contrast</label><span class="ft-right"><span class="val" id="contrastValue">1.00</span></span></div>
+          <input type="range" id="contrast" min="0.5" max="2" step="0.05" value="1">
         </div>
       </div>
     </section>
@@ -182,7 +198,7 @@
         <div class="checkbox-group">
           <input type="checkbox" id="useGPU" checked>
           <label for="useGPU">GPU acceleration</label>
-          <span class="info-icon" data-tooltip="Uses WebGPU for faster computation. Automatically falls back to CPU if unavailable." role="button" tabindex="0" aria-label="Information about GPU acceleration">ⓘ</span>
+          <span class="info-icon" data-tooltip="Uses WebGPU for faster preprocessing and field solving. Falls back to CPU automatically when WebGPU is unavailable." role="button" tabindex="0" aria-label="Information about GPU acceleration">ⓘ</span>
         </div>
         <div class="checkbox-group">
           <input type="checkbox" id="useWorkers" checked>
@@ -277,566 +293,9 @@
   </div>
 </main>
     <script src="worker-pool.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/gpu.js"></script>
     <script>
-        class WebGPUManager {
-            constructor() {
-                this.device = null;
-                this.context = null;
-                this.available = false;
-                this.initialized = false;
-            }
-
-            async init() {
-                if (this.initialized) return this.available;
-                
-                if (!navigator.gpu) {
-                    console.warn('WebGPU not supported, falling back to CPU');
-                    this.available = false;
-                    this.initialized = true;
-                    return false;
-                }
-
-                try {
-                    const adapter = await navigator.gpu.requestAdapter();
-                    if (!adapter) {
-                        console.warn('No GPU adapter found, falling back to CPU');
-                        this.available = false;
-                        this.initialized = true;
-                        return false;
-                    }
-
-                    this.device = await adapter.requestDevice();
-                    this.available = true;
-                    this.initialized = true;
-                    // LOG_REMOVED:'WebGPU initialized successfully');
-                    return true;
-                } catch (error) {
-                    console.warn('WebGPU initialization failed:', error);
-                    this.available = false;
-                    this.initialized = true;
-                    return false;
-                }
-            }
-
-            createBuffer(size, usage) {
-                if (!this.device) throw new Error('WebGPU not initialized');
-                return this.device.createBuffer({
-                    size,
-                    usage,
-                    mappedAtCreation: false
-                });
-            }
-
-            createComputePipeline(code, entryPoint) {
-                if (!this.device) throw new Error('WebGPU not initialized');
-                const shaderModule = this.device.createShaderModule({ code });
-                return this.device.createComputePipeline({
-                    layout: 'auto',
-                    compute: {
-                        module: shaderModule,
-                        entryPoint
-                    }
-                });
-            }
-
-            async executeCompute(pipeline, bindGroup, workgroups, commandBuffer) {
-                if (!this.device) throw new Error('WebGPU not initialized');
-
-                const passEncoder = commandBuffer.beginComputePass();
-                passEncoder.setPipeline(pipeline);
-                passEncoder.setBindGroup(0, bindGroup);
-                passEncoder.dispatchWorkgroups(workgroups.x, workgroups.y, workgroups.z);
-                passEncoder.end();
-            }
-
-            async readBuffer(buffer, size) {
-                if (!this.device) throw new Error('WebGPU not initialized');
-                const readBuffer = this.device.createBuffer({
-                    size,
-                    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-                });
-
-                const commandEncoder = this.device.createCommandEncoder();
-                commandEncoder.copyBufferToBuffer(buffer, 0, readBuffer, 0, size);
-                this.device.queue.submit([commandEncoder.finish()]);
-
-                await readBuffer.mapAsync(GPUMapMode.READ);
-                const data = new Float32Array(readBuffer.getMappedRange().slice(0));
-                readBuffer.unmap();
-                readBuffer.destroy();
-
-                return data;
-            }
-
-            async runGrayscaleConversion(imageData, width, height) {
-                const pixelCount = width * height;
-                const inputBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
-                const outputBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-
-                try {
-                    this.device.queue.writeBuffer(inputBuffer, 0, imageData.data);
-
-                    const shaderCode = `
-                        @group(0) @binding(0) var<storage, read> input: array<u32>;
-                        @group(0) @binding(1) var<storage, read_write> output: array<f32>;
-
-                        @compute @workgroup_size(256)
-                        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                            let idx = id.x;
-                            if (idx >= ${pixelCount}u) { return; }
-
-                            let pixel = input[idx];
-                            let r = f32((pixel >> 0u) & 0xFFu);
-                            let g = f32((pixel >> 8u) & 0xFFu);
-                            let b = f32((pixel >> 16u) & 0xFFu);
-
-                            output[idx] = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
-                        }
-                    `;
-
-                    const pipeline = this.createComputePipeline(shaderCode, 'main');
-                    const bindGroup = this.device.createBindGroup({
-                        layout: pipeline.getBindGroupLayout(0),
-                        entries: [
-                            { binding: 0, resource: { buffer: inputBuffer } },
-                            { binding: 1, resource: { buffer: outputBuffer } }
-                        ]
-                    });
-
-                    const workgroups = Math.ceil(pixelCount / 256);
-                    const commandEncoder = this.device.createCommandEncoder();
-                    await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
-                    this.device.queue.submit([commandEncoder.finish()]);
-
-                    const result = await this.readBuffer(outputBuffer, pixelCount * 4);
-
-                    return result;
-                } finally {
-                    // Always cleanup buffers, even on error
-                    try {
-                        inputBuffer.destroy();
-                        outputBuffer.destroy();
-                    } catch (e) {
-                        console.warn('Error cleaning up GPU buffers:', e);
-                    }
-                }
-            }
-
-            async runMarchingSquares(solutionData, width, height, interval, maxSegments) {
-                const cellsX = width - 1;
-                const cellsY = height - 1;
-                const cellCount = cellsX * cellsY;
-
-                const solutionBuffer = this.createBuffer(width * height * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
-                const maxSegmentsPerCell = 2;
-                const segmentBuffer = this.createBuffer(cellCount * maxSegmentsPerCell * 4 * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-                const countBuffer = this.createBuffer(4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-
-                try {
-                    this.device.queue.writeBuffer(solutionBuffer, 0, solutionData);
-
-                    const shaderCode = `
-                        @group(0) @binding(0) var<storage, read> solution: array<f32>;
-                        @group(0) @binding(1) var<storage, read_write> segments: array<vec4<f32>>;
-                        @group(0) @binding(2) var<storage, read_write> segmentCount: atomic<u32>;
-
-                        const INFINITY: f32 = 999999.0;
-
-                        fn getSolution(x: u32, y: u32) -> f32 {
-                            if (x >= ${width}u || y >= ${height}u) { return INFINITY; }
-                            return solution[y * ${width}u + x];
-                        }
-
-                        fn interp(v1: f32, v2: f32, level: f32) -> f32 {
-                            if (v1 == INFINITY || v2 == INFINITY) { return 0.5; }
-                            if (abs(v2 - v1) < 0.0001) { return 0.5; }
-                            return (level - v1) / (v2 - v1);
-                        }
-
-                        @compute @workgroup_size(256)
-                        fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                            let cellIdx = id.x;
-                            if (cellIdx >= ${cellCount}u) { return; }
-
-                            let x = cellIdx % ${cellsX}u;
-                            let y = cellIdx / ${cellsX}u;
-
-                            const v00 = getSolution(x, y);
-                            const v10 = getSolution(x + 1u, y);
-                            const v01 = getSolution(x, y + 1u);
-                            const v11 = getSolution(x + 1u, y + 1u);
-
-                            let minVal = v00;
-                            if (v10 < minVal && v10 != INFINITY) { minVal = v10; }
-                            if (v01 < minVal && v01 != INFINITY) { minVal = v01; }
-                            if (v11 < minVal && v11 != INFINITY) { minVal = v11; }
-
-                            let maxVal = v00;
-                            if (v10 > maxVal && v10 != INFINITY) { maxVal = v10; }
-                            if (v01 > maxVal && v01 != INFINITY) { maxVal = v01; }
-                            if (v11 > maxVal && v11 != INFINITY) { maxVal = v11; }
-
-                            if (minVal == INFINITY) { return; }
-
-                            var level = minVal + ${interval};
-                            let segmentIdx = cellIdx * 2u;
-
-                            while (level < maxVal) {
-                                let code = 0u;
-                                if (v00 >= level) { code |= 1u; }
-                                if (v10 >= level) { code |= 2u; }
-                                if (v01 >= level) { code |= 4u; }
-                                if (v11 >= level) { code |= 8u; }
-
-                                let i = atomicAdd(&segmentCount, 1u);
-                                if (i >= ${maxSegments}u) { return; }
-
-                                switch (code) {
-                                    case 1u, 14u: {
-                                        let t = interp(v00, v10, level);
-                                        segments[i] = vec4<f32>(f32(x), f32(y) + t, f32(x) + 0.5, f32(y));
-                                    }
-                                    case 2u, 13u: {
-                                        let t = interp(v10, v11, level);
-                                        segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t);
-                                    }
-                                    case 3u, 12u: {
-                                        let t1 = interp(v00, v10, level);
-                                        let t2 = interp(v01, v11, level);
-                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 1.0, f32(y) + t2);
-                                    }
-                                    case 4u, 11u: {
-                                        let t = interp(v01, v11, level);
-                                        segments[i] = vec4<f32>(f32(x) + 0.5, f32(y) + 1.0, f32(x) + t, f32(y) + 1.0);
-                                    }
-                                    case 5u: {
-                                        let t1 = interp(v00, v10, level);
-                                        let t2 = interp(v01, v11, level);
-                                        let i = atomicAdd(&segmentCount, 1u);
-                                        if (i >= ${maxSegments}u) { return; }
-                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
-                                        let i2 = atomicAdd(&segmentCount, 1u);
-                                        if (i2 >= ${maxSegments}u) { return; }
-                                        segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + t2, f32(y) + 1.0);
-                                    }
-                                    case 6u, 9u: {
-                                        segments[i] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 0.5, f32(y) + 1.0);
-                                    }
-                                    case 7u, 8u: {
-                                        let t1 = interp(v00, v10, level);
-                                        let t2 = interp(v10, v11, level);
-                                        let i = atomicAdd(&segmentCount, 1u);
-                                        if (i >= ${maxSegments}u) { return; }
-                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y) + 1.0);
-                                        let i2 = atomicAdd(&segmentCount, 1u);
-                                        if (i2 >= ${maxSegments}u) { return; }
-                                        segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
-                                    }
-                                    case 10u: {
-                                        let t1 = interp(v00, v10, level);
-                                        let t2 = interp(v01, v11, level);
-                                        let i = atomicAdd(&segmentCount, 1u);
-                                        if (i >= ${maxSegments}u) { return; }
-                                        segments[i] = vec4<f32>(f32(x), f32(y) + t1, f32(x) + 0.5, f32(y));
-                                        let i2 = atomicAdd(&segmentCount, 1u);
-                                        if (i2 >= ${maxSegments}u) { return; }
-                                        segments[i2] = vec4<f32>(f32(x) + 0.5, f32(y), f32(x) + 1.0, f32(y) + t2);
-                                    }
-                                    default: {}
-                                }
-
-                                level += ${interval};
-                            }
-                        }
-                    `;
-
-                    const pipeline = this.createComputePipeline(shaderCode, 'main');
-                    const bindGroup = this.device.createBindGroup({
-                        layout: pipeline.getBindGroupLayout(0),
-                        entries: [
-                            { binding: 0, resource: { buffer: solutionBuffer } },
-                            { binding: 1, resource: { buffer: segmentBuffer } },
-                            { binding: 2, resource: { buffer: countBuffer } }
-                        ]
-                    });
-
-                    const workgroups = Math.ceil(cellCount / 256);
-                    const commandEncoder = this.device.createCommandEncoder();
-                    await this.executeCompute(pipeline, bindGroup, { x: workgroups, y: 1, z: 1 }, commandEncoder);
-                    this.device.queue.submit([commandEncoder.finish()]);
-
-                    const countData = await this.readBuffer(countBuffer, 4);
-                    const segmentCount = Math.min(countData[0], maxSegments);
-
-                    const segmentData = await this.readBuffer(segmentBuffer, segmentCount * 4 * 4);
-
-                    const lines = [];
-                    for (let i = 0; i < segmentCount; i++) {
-                        lines.push({
-                            x1: segmentData[i * 4],
-                            y1: segmentData[i * 4 + 1],
-                            x2: segmentData[i * 4 + 2],
-                            y2: segmentData[i * 4 + 3]
-                        });
-                    }
-
-                    return { lines, skippedJoining: segmentCount >= maxSegments };
-                } finally {
-                    // Always cleanup buffers, even on error
-                    try {
-                        solutionBuffer.destroy();
-                        segmentBuffer.destroy();
-                        countBuffer.destroy();
-                    } catch (e) {
-                        console.warn('Error cleaning up GPU buffers:', e);
-                    }
-                }
-            }
-
-            async runEikonalJFA(grayscaleData, width, height, threshold, progressCallback) {
-                const pixelCount = width * height;
-
-                // Create buffers
-                const grayscaleBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
-                const seedsBufferA = this.createBuffer(pixelCount * 8, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-                const seedsBufferB = this.createBuffer(pixelCount * 8, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-                const distanceBuffer = this.createBuffer(pixelCount * 4, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC);
-                const paramsBuffer = this.createBuffer(16, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST);
-
-                try {
-                    // Upload grayscale data
-                    this.device.queue.writeBuffer(grayscaleBuffer, 0, grayscaleData);
-
-                    // JFA Initialization Shader - mark seed pixels
-                    const initShaderCode = `
-                        @group(0) @binding(0) var<storage, read> grayscale: array<f32>;
-                        @group(0) @binding(1) var<storage, read_write> seeds: array<vec2<i32>>;
-                        @group(0) @binding(2) var<uniform> params: vec4<u32>;
-
-                        @compute @workgroup_size(256)
-                        fn init_seeds(@builtin(global_invocation_id) id: vec3<u32>) {
-                            let idx = id.x;
-                            let width = params.x;
-                            let height = params.y;
-                            let pixelCount = width * height;
-
-                            if (idx >= pixelCount) { return; }
-
-                            let threshold = bitcast<f32>(params.z);
-                            let value = grayscale[idx];
-
-                            if (value < threshold) {
-                                let x = i32(idx % width);
-                                let y = i32(idx / width);
-                                seeds[idx] = vec2<i32>(x, y);
-                            } else {
-                                seeds[idx] = vec2<i32>(-1, -1);
-                            }
-                        }
-                    `;
-
-                    // JFA Step Shader - propagate nearest seeds
-                    const jfaShaderCode = `
-                        @group(0) @binding(0) var<storage, read> seeds_in: array<vec2<i32>>;
-                        @group(0) @binding(1) var<storage, read_write> seeds_out: array<vec2<i32>>;
-                        @group(0) @binding(2) var<uniform> params: vec4<u32>;
-
-                        fn distance_sq(a: vec2<i32>, b: vec2<i32>) -> f32 {
-                            let dx = f32(a.x - b.x);
-                            let dy = f32(a.y - b.y);
-                            return dx * dx + dy * dy;
-                        }
-
-                        @compute @workgroup_size(16, 16)
-                        fn jfa_step(@builtin(global_invocation_id) id: vec3<u32>) {
-                            let x = i32(id.x);
-                            let y = i32(id.y);
-                            let w = i32(params.x);
-                            let h = i32(params.y);
-                            let step_size = i32(params.z);
-
-                            if (x >= w || y >= h) { return; }
-
-                            let idx = u32(y * w + x);
-                            let current_pos = vec2<i32>(x, y);
-                            var best_seed = seeds_in[idx];
-                            var best_dist = 1e10f;
-
-                            if (best_seed.x >= 0) {
-                                best_dist = distance_sq(current_pos, best_seed);
-                            }
-
-                            // Check 9 neighbors at step distance (including self)
-                            for (var dy = -1; dy <= 1; dy++) {
-                                for (var dx = -1; dx <= 1; dx++) {
-                                    let nx = x + dx * step_size;
-                                    let ny = y + dy * step_size;
-
-                                    if (nx < 0 || nx >= w || ny < 0 || ny >= h) { continue; }
-
-                                    let neighbor_idx = u32(ny * w + nx);
-                                    let neighbor_seed = seeds_in[neighbor_idx];
-
-                                    if (neighbor_seed.x >= 0) {
-                                        let dist = distance_sq(current_pos, neighbor_seed);
-                                        if (dist < best_dist) {
-                                            best_dist = dist;
-                                            best_seed = neighbor_seed;
-                                        }
-                                    }
-                                }
-                            }
-
-                            seeds_out[idx] = best_seed;
-                        }
-                    `;
-
-                    // Distance computation shader
-                    const distanceShaderCode = `
-                        @group(0) @binding(0) var<storage, read> seeds: array<vec2<i32>>;
-                        @group(0) @binding(1) var<storage, read_write> distance_field: array<f32>;
-                        @group(0) @binding(2) var<uniform> params: vec4<u32>;
-
-                        @compute @workgroup_size(256)
-                        fn compute_distance(@builtin(global_invocation_id) id: vec3<u32>) {
-                            let idx = id.x;
-                            let width = params.x;
-                            let height = params.y;
-                            let pixelCount = width * height;
-
-                            if (idx >= pixelCount) { return; }
-
-                            let x = i32(idx % width);
-                            let y = i32(idx / width);
-                            let seed = seeds[idx];
-
-                            if (seed.x < 0) {
-                                distance_field[idx] = 999999.0;
-                            } else {
-                                let dx = f32(x - seed.x);
-                                let dy = f32(y - seed.y);
-                                distance_field[idx] = sqrt(dx * dx + dy * dy);
-                            }
-                        }
-                    `;
-
-                    // Create pipelines
-                    const initPipeline = this.createComputePipeline(initShaderCode, 'init_seeds');
-                    const jfaPipeline = this.createComputePipeline(jfaShaderCode, 'jfa_step');
-                    const distancePipeline = this.createComputePipeline(distanceShaderCode, 'compute_distance');
-
-                    // Step 1: Initialize seeds
-                    const initParams = new Uint32Array([width, height, new Float32Array([threshold]).buffer ? 0 : 0, 0]);
-                    const initParamsView = new DataView(initParams.buffer);
-                    initParamsView.setUint32(0, width, true);
-                    initParamsView.setUint32(4, height, true);
-                    initParamsView.setFloat32(8, threshold, true);
-                    initParamsView.setUint32(12, 0, true);
-                    this.device.queue.writeBuffer(paramsBuffer, 0, initParams);
-
-                    const initBindGroup = this.device.createBindGroup({
-                        layout: initPipeline.getBindGroupLayout(0),
-                        entries: [
-                            { binding: 0, resource: { buffer: grayscaleBuffer } },
-                            { binding: 1, resource: { buffer: seedsBufferA } },
-                            { binding: 2, resource: { buffer: paramsBuffer } }
-                        ]
-                    });
-
-                    let commandEncoder = this.device.createCommandEncoder();
-                    let passEncoder = commandEncoder.beginComputePass();
-                    passEncoder.setPipeline(initPipeline);
-                    passEncoder.setBindGroup(0, initBindGroup);
-                    passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
-                    passEncoder.end();
-                    this.device.queue.submit([commandEncoder.finish()]);
-
-                    // Step 2: JFA passes (ping-pong between buffers)
-                    const maxDim = Math.max(width, height);
-                    let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
-                    let readBuffer = seedsBufferA;
-                    let writeBuffer = seedsBufferB;
-                    let passCount = 0;
-                    const totalPasses = Math.ceil(Math.log2(maxDim));
-
-                    // Batch all JFA passes into a single command submission for max performance
-                    while (stepSize >= 1) {
-                        // Update params with step size
-                        const jfaParams = new Uint32Array([width, height, stepSize, 0]);
-                        this.device.queue.writeBuffer(paramsBuffer, 0, jfaParams);
-
-                        const jfaBindGroup = this.device.createBindGroup({
-                            layout: jfaPipeline.getBindGroupLayout(0),
-                            entries: [
-                                { binding: 0, resource: { buffer: readBuffer } },
-                                { binding: 1, resource: { buffer: writeBuffer } },
-                                { binding: 2, resource: { buffer: paramsBuffer } }
-                            ]
-                        });
-
-                        commandEncoder = this.device.createCommandEncoder();
-                        passEncoder = commandEncoder.beginComputePass();
-                        passEncoder.setPipeline(jfaPipeline);
-                        passEncoder.setBindGroup(0, jfaBindGroup);
-                        passEncoder.dispatchWorkgroups(Math.ceil(width / 16), Math.ceil(height / 16));
-                        passEncoder.end();
-                        this.device.queue.submit([commandEncoder.finish()]);
-
-                        // NO sync here - let GPU queue all passes!
-
-                        // Swap buffers
-                        [readBuffer, writeBuffer] = [writeBuffer, readBuffer];
-                        stepSize = Math.floor(stepSize / 2);
-                        passCount++;
-                    }
-
-                    // Single progress update after all JFA passes complete
-                    if (progressCallback) {
-                        progressCallback(1.0);
-                    }
-
-                    // Step 3: Compute final distance field
-                    const distParams = new Uint32Array([width, height, 0, 0]);
-                    this.device.queue.writeBuffer(paramsBuffer, 0, distParams);
-
-                    const distanceBindGroup = this.device.createBindGroup({
-                        layout: distancePipeline.getBindGroupLayout(0),
-                        entries: [
-                            { binding: 0, resource: { buffer: readBuffer } },
-                            { binding: 1, resource: { buffer: distanceBuffer } },
-                            { binding: 2, resource: { buffer: paramsBuffer } }
-                        ]
-                    });
-
-                    commandEncoder = this.device.createCommandEncoder();
-                    passEncoder = commandEncoder.beginComputePass();
-                    passEncoder.setPipeline(distancePipeline);
-                    passEncoder.setBindGroup(0, distanceBindGroup);
-                    passEncoder.dispatchWorkgroups(Math.ceil(pixelCount / 256));
-                    passEncoder.end();
-                    this.device.queue.submit([commandEncoder.finish()]);
-
-                    // Read back results
-                    const result = await this.readBuffer(distanceBuffer, pixelCount * 4);
-
-                    return result;
-                } finally {
-                    // Always cleanup buffers, even on error
-                    try {
-                        grayscaleBuffer.destroy();
-                        seedsBufferA.destroy();
-                        seedsBufferB.destroy();
-                        distanceBuffer.destroy();
-                        paramsBuffer.destroy();
-                    } catch (e) {
-                        console.warn('Error cleaning up GPU buffers:', e);
-                    }
-                }
-            }
-        }
-
-        const webGPUManager = new WebGPUManager();
-
         // Live Preview Manager - handles real-time visualization during processing
         class LivePreviewManager {
             constructor(canvas, ctx) {
@@ -870,22 +329,20 @@
             }
 
             // Render distance field as heatmap during Eikonal solving
-            renderDistanceField(distanceData, width, height) {
+            renderDistanceField(distanceData, width, height, minVal, maxVal) {
                 if (!this.shouldUpdate()) return;
 
-                // Find min/max for normalization
-                let minVal = Infinity, maxVal = -Infinity;
-                for (let i = 0; i < distanceData.length; i++) {
-                    const val = distanceData[i];
-                    if (val < 999999) {
-                        if (val < minVal) minVal = val;
-                        if (val > maxVal) maxVal = val;
+                // Find min/max for normalization (or use precomputed stats from wavefront streaming)
+                if (minVal === undefined) {
+                    minVal = Infinity; maxVal = -Infinity;
+                    for (let i = 0; i < distanceData.length; i++) {
+                        const val = distanceData[i];
+                        if (val < 999999) {
+                            if (val < minVal) minVal = val;
+                            if (val > maxVal) maxVal = val;
+                        }
                     }
-                }
-
-                if (minVal === Infinity) {
-                    minVal = 0;
-                    maxVal = 1;
+                    if (minVal === Infinity) { minVal = 0; maxVal = 1; }
                 }
                 const range = maxVal - minVal || 1;
 
@@ -935,12 +392,23 @@
             }
 
             // Render contours incrementally as they're extracted
-            renderContours(contours, width, height, lineColor, lineWidth, clear = true) {
+            renderContours(contours, width, height, lineColor, lineWidth, clear = true, stipplePoints = null) {
                 if (!this.shouldUpdate()) return;
 
                 if (clear) {
                     this.ctx.fillStyle = '#ffffff';
                     this.ctx.fillRect(0, 0, width, height);
+                }
+
+                if (stipplePoints && stipplePoints.length > 0) {
+                    const r = Math.max(0.5, lineWidth * 1.2);
+                    this.ctx.fillStyle = lineColor;
+                    for (const p of stipplePoints) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                    return;
                 }
 
                 this.ctx.strokeStyle = lineColor;
@@ -1125,7 +593,7 @@
         class MarchingWaves {
             constructor() {
                 this.canvas = document.getElementById('outputCanvas');
-                this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+                this.ctx = this.canvas.getContext('2d');
                 this.imageData = null;
                 this.grayData = null;
                 this.solution = null;
@@ -1140,19 +608,27 @@
                 this.isCancelled = false;
                 this.progressCallback = null;
                 this.livePreviewManager = new LivePreviewManager(this.canvas, this.ctx);
-                this.useGPU = true;
                 this.livePreviewEnabled = true;
                 this.isPaused = false;
                 this.pauseResolve = null;
                 this.isVisible = true;
                 this.useWorkers = true;
+                this.gpuEnabled = true;
+                this.gpuAvailable = false;
+                this.gpuInitError = null;
+                this.gpuPreprocessMs = null;
+                this.gpuEikonalMs = null;
+                this.gradMag = null;
+                this.edgeDistance = null;
                 this.workerPool = null;
                 this.currentTaskPromise = null;
                 this.palette = null;
-                this.usePalette = true;
+                this.usePalette = false;
                 this.lineWidthVar = null;
                 this.glitchEnabled = false;
                 this.fractalEnabled = false;
+                this.currentMode = 'luminance';
+                this.stipplePoints = null;
             }
 
             setProgressCallback(cb) {
@@ -1163,12 +639,18 @@
                 if (!this.isPaused) {
                     this.isPaused = true;
                     this.updateProgress(true, null, 'Paused');
+                    if (this.currentTaskPromise && this.workerPool) {
+                        this.workerPool.pauseTask(this.currentTaskPromise.taskId);
+                    }
                 }
             }
 
             resume() {
                 if (this.isPaused) {
                     this.isPaused = false;
+                    if (this.currentTaskPromise && this.workerPool) {
+                        this.workerPool.resumeTask(this.currentTaskPromise.taskId);
+                    }
                     if (this.pauseResolve) {
                         this.pauseResolve();
                         this.pauseResolve = null;
@@ -1211,6 +693,7 @@
                 this.rawContours = [];
                 this.originPoints = [];
                 this.perf = {};
+                this.stipplePoints = null;
 
                 // Clear preview data
                 if (this.livePreviewManager) {
@@ -1266,13 +749,16 @@
                 }
 
                 try {
+                    // Extract callbacks that must not reach the worker (DataCloneError)
+                    const { onWavefront, ...workerOptions } = options;
                     const promise = this.workerPool.execute(method, params, {
-                        ...options,
+                        ...workerOptions,
                         onProgress: (percent, message) => {
-                            if (options.showProgress) {
-                                this.updateProgress(options.showProgress, percent, message);
+                            if (workerOptions.showProgress) {
+                                this.updateProgress(workerOptions.showProgress, percent, message);
                             }
-                        }
+                        },
+                        onWavefront
                     });
 
                     // Store the promise for cancellation
@@ -1357,12 +843,13 @@
                 this.showOrigins = options.showOrigins !== false;
                 this.showGrid = options.showGrid || false;
                 this.livePreviewEnabled = options.livePreview !== false;
-                this.useGPU = options.useGPU !== false;
                 this.useWorkers = options.useWorkers !== false;
+                this.gpuEnabled = options.useGPU !== false;
                 this.livePreviewManager.setEnabled(this.livePreviewEnabled);
                 this.lineWidthVar = options.variableWidth || false;
                 this.glitchEnabled = options.glitchEffect || false;
                 this.fractalEnabled = options.fractalEffect || false;
+                this.currentMode = options.mode || 'luminance';
 
                 // Initialize worker pool for background processing
                 await this.initWorkerPool();
@@ -1378,26 +865,46 @@
                 this.imageData = this.ctx.getImageData(0, 0, width, height);
                 
                 const t1 = performance.now();
-                let gpuUsed = { grayscale: false, eikonal: false, contours: false };
 
-                // Use GPU if available AND user has enabled it
-                const canUseGPU = this.useGPU && webGPUManager.available;
-                if (canUseGPU) {
-                    try {
-                        this.grayData = await webGPUManager.runGrayscaleConversion(this.imageData, width, height);
-                        gpuUsed.grayscale = true;
-                    } catch (error) {
-                        console.warn('GPU grayscale conversion failed, falling back to CPU:', error);
-                        this.grayData = this.toGrayscale(this.imageData);
-                    }
+                // ── Preprocess (GPU when available, CPU fallback) ──
+                const blurRadius = Math.max(0, Math.min(8, Math.round(options.blurRadius || 0)));
+                const contrast = options.contrast != null ? options.contrast : 1;
+                const wantGPU = this.gpuEnabled && typeof gpuManager !== 'undefined' && gpuManager;
+
+                if (wantGPU) {
+                    this.gpuAvailable = await gpuManager.init();
                 } else {
-                    this.grayData = this.toGrayscale(this.imageData);
+                    this.gpuAvailable = false;
                 }
 
-                this.palette = this.extractPalette(this.imageData, 5);
-                this.usePalette = true;
+                if (this.gpuAvailable) {
+                    try {
+                        this.grayData = await gpuManager.preprocess(this.imageData, { blurRadius, contrast, invert: false });
+                    } catch (error) {
+                        console.warn('GPU preprocess failed, using CPU:', error);
+                        this.gpuAvailable = false;
+                    }
+                }
+                if (!this.gpuAvailable) {
+                    this.grayData = Engine.preprocessCPU(this.imageData, { blurRadius, contrast });
+                }
 
                 const t2 = performance.now();
+                this.gpuPreprocessMs = t2 - t1;
+
+                // Gradient magnitude — powers adaptive levels, edge guidance and
+                // variable line width in every mode (computed on GPU when possible).
+                if (this.gpuAvailable) {
+                    try {
+                        const grad = await gpuManager.sobelGradient(this.grayData, width, height);
+                        this.gradMag = grad.gradMag;
+                    } catch (error) {
+                        console.warn('GPU gradient failed, using CPU:', error);
+                        this.gradMag = Engine.sobelGradientCPU(this.grayData, width, height).gradMag;
+                    }
+                } else {
+                    this.gradMag = Engine.sobelGradientCPU(this.grayData, width, height).gradMag;
+                }
 
                 if (this.isCancelled) throw new Error('Cancelled by user');
                 this.updateProgress(showProgress, 15, 'Converting to grayscale...');
@@ -1422,11 +929,17 @@
                 // Show canvas during processing if live preview enabled
                 if (this.livePreviewEnabled) {
                     document.getElementById('dropPreview').style.display = 'none';
-                    document.getElementById('canvasContainer').style.display = 'block';
+                    document.getElementById('canvasContainer').style.display = 'flex';
                 }
 
                 const t3 = performance.now();
-                gpuUsed.eikonal = await this.solveEikonalAsync(width, height, threshold, showProgress, options.lineColor);
+
+                if (this.currentMode === 'luminance' || this.currentMode === 'stipple' || this.currentMode === 'tsp' || this.currentMode === 'hatch') {
+                    this.solution = null;
+                } else {
+                    const withEdgeField = (options.edgeGuidance !== false) && this.currentMode === 'contours';
+                    await this.solveEikonalAsync(width, height, threshold, showProgress, withEdgeField);
+                }
                 const t4 = performance.now();
 
                 if (this.isCancelled) throw new Error('Cancelled by user');
@@ -1440,6 +953,8 @@
                     solution: this.solution,
                     grayData: this.grayData,
                     imageData: this.imageData,
+                    gradMag: this.gradMag,
+                    edgeDistance: this.edgeDistance,
                     width,
                     height,
                     interval,
@@ -1452,11 +967,22 @@
                     showProgress
                 };
 
-                if (options.mode === 'streamlines') {
+                if (options.mode === 'luminance') {
+                    this.updateProgress(showProgress, 60, 'Extracting luminance contours...');
+                    const levels = Engine.generateLuminanceLevels(this.grayData, width, height, interval, threshold, this.gradMag);
+                    const raw = Engine.marchSquaresDirect(this.grayData, width, height, levels);
+                    let joined = Engine.joinSegments(raw);
+                    joined = joined.map(p => Engine.simplifyPath(p, 0.8)).filter(p => p.length > 1);
+                    if (options.contourSmoothness > 0.1) {
+                        const segs = 1 + Math.round(4 * options.contourSmoothness);
+                        const tens = 0.3 + 0.4 * options.contourSmoothness;
+                        joined = joined.map(p => Engine.smoothPathCornerAware(p, segs, tens, 30));
+                    }
+                    contourData = { contours: joined, raw, skippedJoining: false };
+                } else if (options.mode === 'streamlines') {
                     const workerResult = await this.executeOnWorker('extractStreamlines', workerParams, workerOptions);
                     if (workerResult) {
                         contourData = workerResult.data;
-                        gpuUsed.contours = false; // Worker used
                     } else {
                         contourData = await this.extractStreamlines(width, height, options);
                     }
@@ -1464,7 +990,7 @@
                     const workerResult = await this.executeOnWorker('extractStipple', workerParams, workerOptions);
                     if (workerResult) {
                         contourData = workerResult.data;
-                        gpuUsed.contours = false;
+                        this.stipplePoints = workerResult.data.stipplePoints || null;
                     } else {
                         contourData = await this.extractStipple(width, height, options);
                     }
@@ -1472,7 +998,6 @@
                     const workerResult = await this.executeOnWorker('extractTSP', workerParams, workerOptions);
                     if (workerResult) {
                         contourData = workerResult.data;
-                        gpuUsed.contours = false;
                     } else {
                         contourData = await this.extractTSP(width, height, options);
                     }
@@ -1480,7 +1005,6 @@
                     const workerResult = await this.executeOnWorker('extractHatch', workerParams, workerOptions);
                     if (workerResult) {
                         contourData = workerResult.data;
-                        gpuUsed.contours = false;
                     } else {
                         contourData = await this.extractHatch(width, height, options);
                     }
@@ -1502,45 +1026,40 @@
                         edgeGuidance: contourOptions.edgeGuidance,
                         edgeSensitivity: contourOptions.edgeSensitivity,
                         detailLevel: contourOptions.detailLevel,
-                        contourSmoothness: contourOptions.contourSmoothness
+                        contourSmoothness: contourOptions.contourSmoothness,
+                        featureImportance: contourOptions.featureImportance
                     }, workerOptions);
 
                     if (workerResult) {
                         contourData = workerResult.data;
-                        gpuUsed.contours = false;
                     } else {
-                        contourData = await this.extractContours(width, height, interval, maxSegments, skipJoining, showProgress, gpuUsed, lineColor, lineWidth, contourOptions);
+                        contourData = await this.extractContours(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, contourOptions);
                     }
                 }
 
                 this.contours = contourData.contours;
                 this.rawContours = contourData.raw;
                 const t6 = performance.now();
-                 
-                 // LOG_REMOVED:'Origin points:', this.originPoints.length);
-                 let minVal = Infinity;
-                 let maxVal = -Infinity;
-                 for (let i = 0; i < this.solution.length; i++) {
-                     if (this.solution[i] < Infinity) {
-                         if (this.solution[i] < minVal) minVal = this.solution[i];
-                         if (this.solution[i] > maxVal) maxVal = this.solution[i];
-                     }
-                 }
-                 // LOG_REMOVED:'Solution range:', minVal === Infinity ? 'N/A' : minVal, maxVal === -Infinity ? 'N/A' : maxVal);
-                 // LOG_REMOVED:'Contours generated:', this.contours.length);
 
                 this.perf = {
                     'Total': (t6 - t0).toFixed(1),
-                    'Grayscale': `${(t2 - t1).toFixed(1)}ms (${gpuUsed.grayscale ? 'GPU' : 'CPU'})`,
-                    'Eikonal': `${(t4 - t3).toFixed(1)}ms (${gpuUsed.eikonal ? 'GPU JFA' : 'CPU FMM'})`,
-                    'Contours': `${(t6 - t5).toFixed(1)}ms (CPU)`,
+                    'Backend': this.gpuAvailable ? 'GPU · WebGPU' : 'CPU',
+                    'Preprocess': `${(t2 - t1).toFixed(1)}ms`,
+                    'Field': this.currentMode === 'luminance' ? 'Direct (luminance)' : `${(t4 - t3).toFixed(1)}ms`,
+                    'Contours': `${(t6 - t5).toFixed(1)}ms`,
                     'Width': width,
                     'Height': height,
                     'Origins': this.originPoints.length,
-                    'Contour Lines': this.rawContours.reduce((sum, c) => sum + c.lines.length, 0),
-                    'Joined Paths': this.contours.length,
+                    'Contours': this.contours.length,
+                    'Mode': this.currentMode,
                     'Optimization': contourData.skippedJoining ? 'Skipped (too many segments)' : 'Normal'
                 };
+                if (this.gpuAvailable) {
+                    const usage = gpuManager.getUsage();
+                    if (usage.eikonal > 0) this.perf['GPU Eikonal'] = `${usage.eikonal.toFixed(1)}ms`;
+                    if (usage.sobel > 0) this.perf['GPU Gradient'] = `${usage.sobel.toFixed(1)}ms`;
+                    if (usage.edgeDistance > 0) this.perf['GPU Edge Dist'] = `${usage.edgeDistance.toFixed(1)}ms`;
+                }
 
                 if (this.isCancelled) throw new Error('Cancelled by user');
                 this.updateProgress(showProgress, 90, 'Rendering...');
@@ -1581,9 +1100,6 @@
 
                 const svg = this.getSVG(width, height, lineColor, lineWidth, antiAlias);
 
-                // Cleanup memory after export
-                this.cleanupAfterExport();
-
                 return svg;
             }
 
@@ -1610,71 +1126,86 @@
                 }
             }
 
-            // Async Eikonal solver with GPU (JFA) and CPU (FMM) fallback
-            async solveEikonalAsync(width, height, threshold, showProgress, lineColor) {
-                const self = this;
-
-                // Try GPU first if enabled and available
-                if (this.useGPU && webGPUManager.available) {
+            // Async Eikonal solver with worker → main thread fallback
+            async solveEikonalAsync(width, height, threshold, showProgress, withEdgeField = true) {
+                // GPU path: WebGPU red-black sweep solver (true Eikonal, speed = luminance)
+                if (this.gpuAvailable && this.gpuEnabled && typeof gpuManager !== 'undefined' && gpuManager) {
                     try {
-                        // Simplified progress callback - just update text, no delays
-                        const progressCallback = showProgress ? (progress) => {
-                            self.updateProgress(showProgress, 30 + progress * 25, 'Solving Eikonal (GPU)...');
-                        } : null;
+                        const t0 = performance.now();
+                        const iterations = (typeof WebGPUManager !== 'undefined')
+                            ? WebGPUManager.suggestedIterations(width, height)
+                            : 48;
+                        this.solution = await gpuManager.solveEikonal(this.grayData, width, height, threshold, iterations);
 
-                        // Run GPU JFA
-                        this.solution = await webGPUManager.runEikonalJFA(
-                            this.grayData, width, height, threshold, progressCallback
-                        );
+                        // Edge distance field (unsigned distance to Sobel edges) for edge guidance
+                        if (withEdgeField) {
+                            this.edgeDistance = await gpuManager.edgeDistance(
+                                this.grayData, width, height, 0.12, iterations, { gradMag: this.gradMag }
+                            );
+                        } else {
+                            this.edgeDistance = null;
+                        }
 
-                        // Show final distance field preview (no pause - will be replaced by contours anyway)
+                        this.gpuEikonalMs = performance.now() - t0;
                         if (this.livePreviewEnabled) {
                             this.livePreviewManager.renderDistanceField(this.solution, width, height);
                         }
-
-                        // LOG_REMOVED:'Eikonal solved using GPU (JFA)');
-                        return true; // GPU was used
+                        return;
                     } catch (error) {
-                        console.warn('GPU Eikonal failed, falling back to workers:', error);
+                        console.warn('GPU Eikonal solver failed, falling back to worker FMM:', error);
+                        this.gpuAvailable = false;
+                        // Fall through to the CPU/worker path below
                     }
                 }
 
-                // Try worker for CPU processing
                 if (this.useWorkers && this.workerPool) {
                     try {
-                        const result = await this.executeOnWorker('solveEikonalCPU', {
-                            grayData: this.grayData,
-                            width,
-                            height,
-                            threshold
-                        }, { showProgress });
+                        const stream = this.livePreviewEnabled;
+                        const size = width * height;
+                        const waveField = stream ? new Float32Array(size).fill(Infinity) : null;
+                        let waveMax = 0;
+                        const onWavefront = stream ? (indices, values) => {
+                            for (let i = 0; i < indices.length; i++) {
+                                waveField[indices[i]] = values[i];
+                                if (values[i] > waveMax) waveMax = values[i];
+                            }
+                            this.livePreviewManager.renderDistanceField(waveField, width, height, 0, waveMax);
+                        } : null;
 
+                        const result = await this.executeOnWorker('solveEikonalCPU', {
+                            grayData: this.grayData, width, height, threshold
+                        }, { showProgress, streamWavefront: stream, onWavefront });
                         if (result) {
                             this.solution = result.data.solution;
-
-                            // Show distance field preview (no pause)
+                            this.computeEdgeDistanceCPU(width, height, withEdgeField);
                             if (this.livePreviewEnabled) {
-                                this.livePreviewManager.renderDistanceField(this.solution, width, height);
+                                this.livePreviewManager.renderDistanceField(this.solution, width, height, 0, waveMax);
                             }
-
-                            // LOG_REMOVED:'Eikonal solved using Worker (CPU FMM)');
-                            // LOG_REMOVED:`Worker performance: ${result.performance.totalMs.toFixed(1)}ms`);
-                            return false; // Worker was used
+                            return;
                         }
                     } catch (error) {
                         console.warn('Worker Eikonal failed, falling back to main thread:', error);
                     }
                 }
-
-                // Main thread CPU fallback
                 this.solveEikonalCPU(width, height, threshold);
-
-                // Show distance field preview for CPU as well (no pause)
+                this.computeEdgeDistanceCPU(width, height, withEdgeField);
                 if (this.livePreviewEnabled) {
                     this.livePreviewManager.renderDistanceField(this.solution, width, height);
                 }
+            }
 
-                return false; // Main thread CPU was used
+            // CPU edge-distance field (chamfer distance transform on the Sobel edge mask).
+            // Keeps edge guidance working when the GPU path is unavailable.
+            computeEdgeDistanceCPU(width, height, withEdgeField) {
+                if (!withEdgeField || !this.gradMag) {
+                    this.edgeDistance = null;
+                    return;
+                }
+                const mask = new Uint8Array(width * height);
+                for (let i = 0; i < mask.length; i++) {
+                    mask[i] = this.gradMag[i] > 0.12 ? 1 : 0;
+                }
+                this.edgeDistance = Engine.distanceTransformChamfer(mask, width, height);
             }
 
             // CPU-based Fast Marching Method solver
@@ -1742,6 +1273,7 @@
                     return result;
                 };
 
+                let processed = 0;
                 while (heap.length > 0) {
                     const current = heapPop();
                     if (!current) break;
@@ -1807,10 +1339,14 @@
                             heapPush({ x: neighbor.x, y: neighbor.y, value: newValue });
                         }
                     }
+                    processed++;
+                    if (processed % 2000 === 0) {
+                        if (this.isCancelled) throw new Error('Cancelled by user');
+                    }
                 }
             }
 
-            async extractContours(width, height, interval, maxSegments, skipJoining, showProgress, gpuUsed = {}, lineColor = '#000000', lineWidth = 1, options = {}) {
+            async extractContours(width, height, interval, maxSegments, skipJoining, showProgress, lineColor = '#000000', lineWidth = 1, options = {}) {
                 // Use the new adaptive contour extraction algorithm
                 return this.extractContoursAdaptive(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, options);
             }
@@ -1828,11 +1364,27 @@
                 const tStart = performance.now();
                 
                 // 1. Prepare Gradient Field
-                const { gradX, gradY, gradMag } = this.computeDistanceFieldGradient(this.solution, width, height);
+                const { gradX, gradY } = this.computeDistanceFieldGradient(this.solution, width, height);
+
+                // When the distance field is degenerate (flat — e.g. seeds cover most
+                // of the image), fall back to the image's own gradient.
+                const threshold = (options.threshold || 50) / 100;
+                let usable = 0, gradCount = 0;
+                for (let i = 0; i < this.solution.length; i++) {
+                    if (this.grayData[i] >= threshold) continue;
+                    gradCount++;
+                    if (Math.sqrt(gradX[i] * gradX[i] + gradY[i] * gradY[i]) > 0.001) usable++;
+                }
+                if (gradCount === 0 || usable / Math.max(1, gradCount) < 0.5) {
+                    const imgGrad = Engine.sobelGradientCPU(this.grayData, width, height);
+                    for (let i = 0; i < this.solution.length; i++) {
+                        gradX[i] = imgGrad.gradX[i];
+                        gradY[i] = imgGrad.gradY[i];
+                    }
+                }
                 
                 // 2. Seed points based on image density/threshold
                 const seeds = [];
-                const threshold = (options.threshold || 50) / 100;
                 
                 // Use a jittered grid for seeding to get better coverage than random
                 const seedSpacing = interval;
@@ -1895,7 +1447,7 @@
                     if (isOccupied(seed.x, seed.y)) continue;
 
                     const path = [seed];
-                    markOccupied(seed.x, seed.y);
+                    // Note: seed cell intentionally not claimed — only drawn lines block
 
                     // Trace in both directions
                     for (const direction of [1, -1]) {
@@ -1948,7 +1500,13 @@
                             const nx = cx + k2x;
                             const ny = cy + k2y;
 
-                            if (isOccupied(nx, ny)) break;
+                            // Only entering a *different*, already-claimed cell blocks:
+                            // consecutive 2px steps stay inside the same 6.4px cell.
+                            const cgx = Math.floor(cx / occGridSize);
+                            const cgy = Math.floor(cy / occGridSize);
+                            const tgx = Math.floor(nx / occGridSize);
+                            const tgy = Math.floor(ny / occGridSize);
+                            if ((tgx !== cgx || tgy !== cgy) && isOccupied(nx, ny)) break;
 
                             if (direction === 1) {
                                 path.push({ x: nx, y: ny });
@@ -1990,9 +1548,9 @@
             async extractStipple(width, height, options) {
                 const {
                     interval = 8,
-                    showProgress = true,
-                    threshold = 0.5
+                    showProgress = true
                 } = options;
+                const threshold = (options.threshold != null ? options.threshold : 50) / 100;
 
                 const tStart = performance.now();
                 const points = [];
@@ -2120,38 +1678,55 @@
                     if (points.length > 150000) break;
                 }
 
-                const dotPaths = points.map(p => [{ x: p.x, y: p.y }, { x: p.x + 0.1, y: p.y + 0.1 }]);
-                return { contours: dotPaths, raw: [], skippedJoining: true };
+                this.stipplePoints = points;
+                return { contours: points.map(p => [{ x: p.x, y: p.y }]), raw: [], skippedJoining: true };
             }
 
             async extractTSP(width, height, options) {
                 const stippleResult = await this.extractStipple(width, height, { ...options, showProgress: true });
-                const points = stippleResult.contours.map(p => p[0]);
+                let points = stippleResult.contours.map(p => p[0]);
                 if (points.length < 2) return { contours: [], raw: [], skippedJoining: false };
 
+                const MAX_TSP_POINTS = 4000;
+                if (points.length > MAX_TSP_POINTS) {
+                    const sampled = [];
+                    const step = points.length / MAX_TSP_POINTS;
+                    for (let i = 0; i < MAX_TSP_POINTS; i++) {
+                        sampled.push(points[Math.floor(i * step)]);
+                    }
+                    points = sampled;
+                }
+
                 this.updateProgress(true, 90, `Connecting ${points.length} points...`);
-                
-                // Optimized Nearest Neighbor with Spatial Grid
-                const orderedPoints = [];
+
                 const used = new Uint8Array(points.length);
                 const cellSize = 30;
                 const gridWidth = Math.ceil(width / cellSize);
                 const gridHeight = Math.ceil(height / cellSize);
                 const grid = Array(gridWidth * gridHeight).fill().map(() => []);
-                
+
                 for (let i = 0; i < points.length; i++) {
                     const gx = Math.floor(points[i].x / cellSize);
                     const gy = Math.floor(points[i].y / cellSize);
                     grid[gy * gridWidth + gx].push(i);
                 }
 
-                let currentIdx = 0;
+                let bestStartIdx = 0;
+                let bestStartDist = -1;
+                const cx = width / 2, cy = height / 2;
+                for (let i = 0; i < Math.min(points.length, 100); i++) {
+                    const d = Math.abs(points[i].x - cx) + Math.abs(points[i].y - cy);
+                    if (d > bestStartDist) { bestStartDist = d; bestStartIdx = i; }
+                }
+
+                const orderedPoints = [];
+                let currentIdx = bestStartIdx;
                 orderedPoints.push(points[currentIdx]);
                 used[currentIdx] = 1;
                 let remaining = points.length - 1;
 
                 while (remaining > 0) {
-                    if (remaining % 1000 === 0) {
+                    if (remaining % 500 === 0) {
                         this.updateProgress(true, 90 + (1 - remaining / points.length) * 10, `TSP: ${remaining} left...`);
                         await this.checkPause();
                         if (this.isCancelled) throw new Error('Cancelled by user');
@@ -2164,33 +1739,24 @@
 
                     const gx = Math.floor(cp.x / cellSize);
                     const gy = Math.floor(cp.y / cellSize);
-                    
-                    let searchRadius = 0;
-                    let found = false;
 
-                    while (!found && searchRadius < Math.max(gridWidth, gridHeight)) {
-                        for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-                            for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-                                if (Math.abs(dx) !== searchRadius && Math.abs(dy) !== searchRadius && searchRadius > 0) continue;
-                                
-                                const ngx = gx + dx;
-                                const ngy = gy + dy;
-                                if (ngx >= 0 && ngx < gridWidth && ngy >= 0 && ngy < gridHeight) {
-                                    const cell = grid[ngy * gridWidth + ngx];
-                                    for (const pIdx of cell) {
-                                        if (!used[pIdx]) {
-                                            const dSq = (cp.x - points[pIdx].x)**2 + (cp.y - points[pIdx].y)**2;
-                                            if (dSq < minDistSq) {
-                                                minDistSq = dSq;
-                                                nearestIdx = pIdx;
-                                                found = true;
-                                            }
-                                        }
-                                    }
+                    for (let sr = 0; sr < Math.max(gridWidth, gridHeight); sr++) {
+                        let hit = false;
+                        for (let dy = -sr; dy <= sr; dy++) {
+                            for (let dx = -sr; dx <= sr; dx++) {
+                                if (Math.abs(dx) !== sr && Math.abs(dy) !== sr && sr > 0) continue;
+                                const ngx = gx + dx, ngy = gy + dy;
+                                if (ngx < 0 || ngx >= gridWidth || ngy < 0 || ngy >= gridHeight) continue;
+                                const cell = grid[ngy * gridWidth + ngx];
+                                for (const pIdx of cell) {
+                                    if (used[pIdx]) continue;
+                                    const dSq = (cp.x - points[pIdx].x) ** 2 + (cp.y - points[pIdx].y) ** 2;
+                                    if (dSq < minDistSq) { minDistSq = dSq; nearestIdx = pIdx; }
+                                    hit = true;
                                 }
                             }
                         }
-                        searchRadius++;
+                        if (hit) break;
                     }
 
                     if (nearestIdx !== -1) {
@@ -2201,7 +1767,10 @@
                     } else break;
                 }
 
-                const improved = this.optimizeTSP2Opt(orderedPoints);
+                let improved = orderedPoints;
+                if (orderedPoints.length < 20000) {
+                    improved = this.optimizeTSP2Opt(orderedPoints);
+                }
 
                 const smoothed = this.postProcessPaths([improved], {
                     ...options,
@@ -2214,21 +1783,29 @@
 
             getPathWidth(path, baseWidth) {
                 if (!this.lineWidthVar || !this.imageData) return baseWidth;
-                let r = 0, g = 0, b = 0, n = 0;
-                const data = this.imageData.data;
                 const w = this.canvas.width;
+                const h = this.canvas.height;
+                let r = 0, g = 0, b = 0, gm = 0, n = 0;
+                const data = this.imageData.data;
                 for (const p of path) {
                     if (!p || p.x === undefined) continue;
                     const ix = Math.floor(p.x), iy = Math.floor(p.y);
-                    if (ix >= 0 && ix < w && iy >= 0 && iy < this.canvas.height) {
+                    if (ix >= 0 && ix < w && iy >= 0 && iy < h) {
                         const idx = (iy * w + ix) * 4;
                         r += data[idx]; g += data[idx + 1]; b += data[idx + 2];
+                        if (this.gradMag) gm += this.gradMag[iy * w + ix];
                         n++;
                     }
                 }
                 if (n === 0) return baseWidth;
                 const brightness = (r + g + b) / (n * 765);
-                return baseWidth * (0.5 + (1 - brightness));
+                let width = baseWidth * (0.5 + (1 - brightness));
+                if (this.gradMag) {
+                    // Engraving style: slightly thinner lines where detail/edges are dense
+                    const gradT = Math.min(1, (gm / n) / 0.35);
+                    width *= (1 - gradT * 0.35);
+                }
+                return width;
             }
 
             optimizeTSP2Opt(points) {
@@ -2347,9 +1924,9 @@
             async extractHatch(width, height, options) {
                 const {
                     interval = 10,
-                    showProgress = true,
-                    threshold = 0.5
+                    showProgress = true
                 } = options;
+                const threshold = (options.threshold != null ? options.threshold : 50) / 100;
 
                 const lines = [];
                 const spacing = interval;
@@ -2555,13 +2132,12 @@
                 );
                 
                 // 3. Join/Optimize the NEW local contours
-                // We need to run joinContoursImproved on just these new segments
-                
+
                 this.updateProgress(showProgress, 50, 'Joining region paths...');
-                
-                 // Note: joinContoursImproved builds a spatial index for ALL segments passed to it.
-                 // It should work fine for a subset.
-                 const newPaths = await this.joinContoursImproved(contourData.raw, showProgress, options);
+
+                const newPaths = Engine.joinSegments(contourData.raw)
+                    .map(p => Engine.simplifyPath(p, 0.8))
+                    .filter(p => p.length > 1);
 
                  // 4. Merge back into main contours list
                  const validNewPaths = newPaths.map(p => this.validatePath(p)).filter(p => p.length > 0);
@@ -2631,6 +2207,18 @@
                     renderContours = this.applyGlitch(this.contours);
                     renderContours = this.applyFractal(renderContours);
                 }
+
+                if (this.currentMode === 'stipple' && this.stipplePoints && this.stipplePoints.length > 0) {
+                    const radius = Math.max(0.5, baseLineWidth * 1.2);
+                    this.ctx.fillStyle = palette ? palette[0] : this.ctx.strokeStyle;
+                    for (const p of this.stipplePoints) {
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                    return;
+                }
+
                 for (let pi = 0; pi < renderContours.length; pi++) {
                     const path = renderContours[pi];
                     if (!path || path.length < 2) continue;
@@ -2685,6 +2273,13 @@
                     }
                     this.ctx.putImageData(imgData, 0, 0);
                 } else if (this.vizMode === 'heatmap') {
+                    if (!this.solution) {
+                        this.ctx.fillStyle = '#888';
+                        this.ctx.font = '16px Arial';
+                        this.ctx.textAlign = 'center';
+                        this.ctx.fillText('Heatmap N/A (luminance mode)', width / 2, height / 2);
+                        return;
+                    }
                     const validValues = [];
                     for (let i = 0; i < this.solution.length; i++) {
                         if (this.solution[i] < Infinity) {
@@ -2752,7 +2347,6 @@
 
                 return '<svg></svg>';
             }
-
             getSVG(width, height, lineColor, lineWidth, antiAlias) {
                 const palette = (this.usePalette && this.palette && this.palette.length > 0) ? this.palette : null;
                 const strokeWidth = this.lineWidthVar || lineWidth;
@@ -2761,40 +2355,50 @@
                     renderContours = this.applyGlitch(this.contours);
                     renderContours = this.applyFractal(renderContours);
                 }
-                let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect width="${width}" height="${height}" fill="white"/>`;
+                const strokeAttr = `stroke-linecap="round" stroke-linejoin="round" fill="none"`;
+                let parts = [];
 
-                for (let pi = 0; pi < renderContours.length; pi++) {
-                    const path = renderContours[pi];
-                    if (!path || path.length < 2) continue;
+                if (this.currentMode === 'stipple' && this.stipplePoints && this.stipplePoints.length > 0) {
+                    const r = Math.max(0.5, lineWidth * 1.2);
+                    const col = palette ? palette[0] : lineColor;
+                    const circles = this.stipplePoints.map(p =>
+                        `<circle cx="${p.x.toFixed(2)}" cy="${p.y.toFixed(2)}" r="${r}" fill="${col}"/>`
+                    ).join('\n    ');
+                    parts.push(`  <g id="stipple" data-mode="stipple">\n    ${circles}\n  </g>`);
+                } else {
+                    for (let pi = 0; pi < renderContours.length; pi++) {
+                        const path = renderContours[pi];
+                        if (!path || path.length < 2) continue;
 
-                    const validPoints = this.validatePath(path);
-                    if (validPoints.length < 2) continue;
+                        const validPoints = this.validatePath(path);
+                        if (validPoints.length < 2) continue;
 
-                    const color = palette ? palette[pi % palette.length] : lineColor;
-                    const lw = this.lineWidthVar ? this.getPathWidth(path, strokeWidth) : strokeWidth;
-                    svg += `\n  <path stroke="${color}" stroke-width="${lw.toFixed(2)}" fill="none" stroke-linecap="round" stroke-linejoin="round" d="`;
+                        const color = palette ? palette[pi % palette.length] : lineColor;
+                        const lw = this.lineWidthVar ? this.getPathWidth(path, strokeWidth) : strokeWidth;
 
-                    let pathData = `M${validPoints[0].x.toFixed(2)},${validPoints[0].y.toFixed(2)}`;
+                        let pathData = `M${validPoints[0].x.toFixed(2)},${validPoints[0].y.toFixed(2)}`;
 
-                    if (validPoints.length === 2) {
-                        pathData += ` L${validPoints[1].x.toFixed(2)},${validPoints[1].y.toFixed(2)}`;
-                    } else {
-                        for (let i = 1; i < validPoints.length - 2; i++) {
-                            const xc = (validPoints[i].x + validPoints[i + 1].x) / 2;
-                            const yc = (validPoints[i].y + validPoints[i + 1].y) / 2;
-                            pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${xc.toFixed(2)},${yc.toFixed(2)}`;
+                        if (validPoints.length === 2) {
+                            pathData += ` L${validPoints[1].x.toFixed(2)},${validPoints[1].y.toFixed(2)}`;
+                        } else {
+                            for (let i = 1; i < validPoints.length - 2; i++) {
+                                const xc = (validPoints[i].x + validPoints[i + 1].x) / 2;
+                                const yc = (validPoints[i].y + validPoints[i + 1].y) / 2;
+                                pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${xc.toFixed(2)},${yc.toFixed(2)}`;
+                            }
+                            const i = validPoints.length - 2;
+                            pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${validPoints[validPoints.length - 1].x.toFixed(2)},${validPoints[validPoints.length - 1].y.toFixed(2)}`;
                         }
 
-                        const i = validPoints.length - 2;
-                        pathData += ` Q${validPoints[i].x.toFixed(2)},${validPoints[i].y.toFixed(2)} ${validPoints[validPoints.length - 1].x.toFixed(2)},${validPoints[validPoints.length - 1].y.toFixed(2)}`;
+                        parts.push(`  <path stroke="${color}" stroke-width="${lw.toFixed(2)}" ${strokeAttr} d="${pathData}"/>`);
                     }
-
-                    svg += pathData + '"/>';
                 }
 
-                svg += '\n</svg>';
+                let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n`;
+                if (parts.length > 0) {
+                    svg += `<g id="contours" data-mode="${this.currentMode}">\n${parts.join('\n')}\n</g>\n`;
+                }
+                svg += '</svg>';
                 return svg;
             }
 
@@ -3062,8 +2666,15 @@
                     edgeGuidance = true,
                     edgeSensitivity = 0.7,
                     detailLevel = 0.8,
-                    contourSmoothness = 0.5
+                    contourSmoothness = 0.5,
+                    featureImportance = 0.6
                 } = options;
+
+                // Edge guidance: warp the field toward image edges (GPU/CPU pre-computed)
+                let field = this.solution;
+                if (edgeGuidance && this.edgeDistance) {
+                    field = Engine.applyEdgeWarp(this.solution, this.edgeDistance, width, height, edgeSensitivity);
+                }
 
                 const validValues = [];
                 // Only scan valid values within bounds if provided
@@ -3087,8 +2698,8 @@
                 for (let y = scanStartY; y < scanEndY; y++) {
                     for (let x = scanStartX; x < scanEndX; x++) {
                         const idx = y * width + x;
-                        if (this.solution[idx] < Infinity) {
-                            validValues.push(this.solution[idx]);
+                        if (field[idx] < Infinity) {
+                            validValues.push(field[idx]);
                         }
                     }
                 }
@@ -3097,7 +2708,6 @@
                     return { contours: [], raw: [], skippedJoining: false };
                 }
 
-                const rawContours = [];
                 let min = Infinity;
                 let max = -Infinity;
 
@@ -3107,240 +2717,44 @@
                     if (v > max) max = v;
                 }
 
-                // Compute edge map and gradient for adaptive processing
-                // Note: edgeMap/gradient are global. If we rerun, we assume imageData hasn't changed.
-                const edgeMap = edgeGuidance ? this.computeEdgeMap(this.imageData, width, height) : null;
-                const { gradMag } = this.computeDistanceFieldGradient(this.solution, width, height);
+                const { gradMag } = this.computeDistanceFieldGradient(field, width, height);
+                const gradForLevels = this.gradMag || gradMag;
+                const levels = Engine.generateAdaptiveLevelsGrad(
+                    field, width, height, interval, min, max, gradForLevels, detailLevel, featureImportance
+                );
 
-                // Generate adaptive levels based on gradient magnitude
-                // If bounds are set, we might get different levels than global.
-                // Ideally we should reuse levels if we want perfect stitching.
-                // But usually "Rerun" implies "Try to do better here", so new levels are fine.
-                const levels = this.generateAdaptiveLevels(this.solution, width, height, interval, min, max, gradMag);
-
-                const safeGet = (x, y) => {
-                    if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
-                    return this.solution[y * width + x];
-                };
-
-                const interp = (v1, v2, level) => {
-                    if (v1 === Infinity || v2 === Infinity) return 0.5;
-                    const diff = v2 - v1;
-                    if (Math.abs(diff) < 0.00001) return 0.5;
-                    return Math.max(0, Math.min(1, (level - v1) / diff));
-                };
-
-                let totalLines = 0;
-                const batchSize = 5000;
-                let processed = 0;
-
-                // Clear canvas once before processing all levels (live preview accumulation)
-                // If bounds set, we only clear the region? Or assume caller handles it.
                 if (this.livePreviewEnabled && !bounds) {
                     this.livePreviewManager.renderRawSegments([], width, height, lineColor, lineWidth, true);
                 }
 
-                // Determine loop limits for marching squares
-                const loopStartX = scanStartX;
-                const loopEndX = Math.min(width - 1, scanEndX); // Marching squares needs x+1
-                const loopStartY = scanStartY;
-                const loopEndY = Math.min(height - 1, scanEndY);
-
-                for (const level of levels) {
-                    const levelLines = [];
-
-                    for (let y = loopStartY; y < loopEndY; y++) {
-                        for (let x = loopStartX; x < loopEndX; x++) {
-                            const v00 = safeGet(x, y);
-                            const v10 = safeGet(x + 1, y);
-                            const v01 = safeGet(x, y + 1);
-                            const v11 = safeGet(x + 1, y + 1);
-
-                            let code = 0;
-                            if (v00 >= level) code |= 1;
-                            if (v10 >= level) code |= 2;
-                            if (v01 >= level) code |= 4;
-                            if (v11 >= level) code |= 8;
-
-                            const lines = [];
-                            const nAmp = interval * 0.08;
-                            const addLine = (x1, y1, x2, y2) => {
-                                const rx1 = x + x1 + this.noiseDisplace(x + x1, y + y1, nAmp);
-                                const ry1 = y + y1 + this.noiseDisplace(y + y1, x + x1, nAmp);
-                                const rx2 = x + x2 + this.noiseDisplace(x + x2, y + y2, nAmp);
-                                const ry2 = y + y2 + this.noiseDisplace(y + y2, x + x2, nAmp);
-                                if (!isFinite(rx1) || !isFinite(ry1) || !isFinite(rx2) || !isFinite(ry2)) return;
-                                if (edgeGuidance && edgeSensitivity > 0.1) {
-                                    const p1 = this.snapToEdge(rx1, ry1, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
-                                    const p2 = this.snapToEdge(rx2, ry2, level, edgeMap, this.solution, width, height, edgeSensitivity, interval);
-                                    if (p1 && isFinite(p1.x) && isFinite(p1.y) && p2 && isFinite(p2.x) && isFinite(p2.y)) {
-                                        lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
-                                    }
-                                } else {
-                                    lines.push({ x1: rx1, y1: ry1, x2: rx2, y2: ry2 });
-                                }
-                            };
-
-                            switch (code) {
-                                case 1:
-                                case 14:
-                                    addLine(0, interp(v00, v10, level), 0.5, 0); break;
-                                case 2:
-                                case 13:
-                                    addLine(0.5, 0, 1, interp(v10, v11, level)); break;
-                                case 3:
-                                case 12:
-                                    addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level)); break;
-                                case 4:
-                                case 11:
-                                    addLine(0.5, 1, interp(v01, v11, level), 1); break;
-                                case 5:
-                                    addLine(0, interp(v00, v10, level), 0.5, 1);
-                                    addLine(0.5, 0, interp(v01, v11, level), 1); break;
-                                case 6:
-                                case 9:
-                                    addLine(0.5, 0, 0.5, 1); break;
-                                case 7:
-                                case 8:
-                                    addLine(0, interp(v00, v10, level), 0.5, 1);
-                                    addLine(0.5, 0, 1, interp(v10, v11, level)); break;
-                                case 10:
-                                    addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
-                                    addLine(0.5, 0, 0.5, 1); break;
-                            }
-
-                            levelLines.push(...lines);
-
-                            processed++;
-                            if (processed % batchSize === 0) {
-                                if (this.isCancelled) throw new Error('Cancelled by user');
-                                await this.checkPause();
-                                await this.yieldToBrowser();
-                            }
-                        }
+                // Use correct marching squares from engine
+                const rawContours = Engine.marchSquaresField(field, width, height, levels);
+                for (let li = 0; li < rawContours.length; li++) {
+                    if (!bounds) {
+                        this.updateProgress(showProgress, 60 + (li / levels.length) * 20, `Level ${li + 1}/${levels.length}...`);
                     }
-
-                     totalLines += levelLines.length;
-                     if (levelLines.length > 0) {
-                         rawContours.push({ level, lines: levelLines });
-                     }
-
-                    if (!bounds) { // Only update progress if full run
-                        const levelIndex = levels.indexOf(level);
-                        const progress = 60 + (levelIndex / levels.length) * 20;
-                        this.updateProgress(showProgress, progress, `Extracting contours (level ${levelIndex + 1}/${levels.length})...`);
-                    }
-
-                    if (this.livePreviewEnabled && levelLines.length > 0) {
-                        // If bounds, we probably shouldn't clear? 
-                        // livePreviewManager.renderRawSegments clears by default for first call.
-                        // But here we are calling it per level.
-                        // renderRawSegments logic: 'clear' param is true only if explicit.
-                        // In loop it was 'false'.
-                        // But wait, if bounds is set, we want to draw ON TOP of existing canvas?
-                        // livePreviewManager draws to ctx.
-                        // If we are rerunning a region, we should have cleared that region on the canvas before.
-                        // We'll handle canvas clearing in rerunRegion.
-                        this.livePreviewManager.renderRawSegments(levelLines, width, height, lineColor, lineWidth, false);
+                    if (this.livePreviewEnabled && rawContours[li].lines.length > 0) {
+                        this.livePreviewManager.renderRawSegments(rawContours[li].lines, width, height, lineColor, lineWidth, li === 0);
                     }
                 }
 
-                 // If bounds are present, return raw segments immediately
                  if (bounds) {
                      return { contours: [], raw: rawContours, skippedJoining: true };
                  }
 
-                 // Add validation to ensure we have meaningful contours
                  if (rawContours.length === 0) {
-                     console.warn('No contours generated from any level - this indicates a problem with level generation');
-                     // Fallback to basic contour generation
-                     const fallbackLevels = [];
-                     for (let l = minVal + interval; l < maxVal; l += interval) {
-                         fallbackLevels.push(l);
-                     }
-                     // LOG_REMOVED:'Falling back to basic level generation with', fallbackLevels.length, 'levels');
-                     
-                     // Re-run with fallback levels
-                     const fallbackContours = [];
-                     for (const level of fallbackLevels) {
-                         const levelLines = [];
-                         for (let y = 0; y < height - 1; y++) {
-                             for (let x = 0; x < width - 1; x++) {
-                                 const v00 = safeGet(x, y);
-                                 const v10 = safeGet(x + 1, y);
-                                 const v01 = safeGet(x, y + 1);
-                                 const v11 = safeGet(x + 1, y + 1);
-
-                                 let code = 0;
-                                 if (v00 >= level) code |= 1;
-                                 if (v10 >= level) code |= 2;
-                                 if (v01 >= level) code |= 4;
-                                 if (v11 >= level) code |= 8;
-
-                                 const lines = [];
-                                 const addLine = (x1, y1, x2, y2) => {
-                                     lines.push({ x1: x + x1, y1: y + y1, x2: x + x2, y2: y + y2 });
-                                 };
-
-                                 switch (code) {
-                                     case 1:
-                                     case 14:
-                                         addLine(0, interp(v00, v10, level), 0.5, 0); break;
-                                     case 2:
-                                     case 13:
-                                         addLine(0.5, 0, 1, interp(v10, v11, level)); break;
-                                     case 3:
-                                     case 12:
-                                         addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level)); break;
-                                     case 4:
-                                     case 11:
-                                         addLine(0.5, 1, interp(v01, v11, level), 1); break;
-                                     case 5:
-                                         addLine(0, interp(v00, v10, level), 0.5, 1);
-                                         addLine(0.5, 0, interp(v01, v11, level), 1); break;
-                                     case 6:
-                                     case 9:
-                                         addLine(0.5, 0, 0.5, 1); break;
-                                     case 7:
-                                     case 8:
-                                         addLine(0, interp(v00, v10, level), 0.5, 1);
-                                         addLine(0.5, 0, 1, interp(v10, v11, level)); break;
-                                     case 10:
-                                         addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
-                                         addLine(0.5, 0, 0.5, 1); break;
-                                 }
-
-                                 levelLines.push(...lines);
-                             }
-                         }
-                         if (levelLines.length > 0) {
-                             fallbackContours.push({ level, lines: levelLines });
-                         }
-                     }
-                     
-                     if (fallbackContours.length === 0) {
-                         console.error('Even fallback contour generation failed - no contours will be returned');
-                         return { contours: [], raw: [], skippedJoining: false };
-                     }
-                     
-                     rawContours = fallbackContours;
-                 }
-
-                 if (totalLines > maxSegments || skipJoining) {
-                     const unjoined = [];
-                     for (const contour of rawContours) {
-                         for (const line of contour.lines) {
-                             unjoined.push([
-                                 { x: line.x1, y: line.y1 },
-                                 { x: line.x2, y: line.y2 }
-                             ]);
-                         }
-                     }
-                     return { contours: unjoined, raw: rawContours, skippedJoining: true };
+                     return { contours: [], raw: [], skippedJoining: false };
                  }
 
                 this.updateProgress(showProgress, 80, 'Joining paths...');
-                const joined = await this.joinContoursImproved(rawContours, showProgress, options);
+                let joined = Engine.joinSegments(rawContours);
+                joined = joined.map(p => Engine.simplifyPath(p, 0.8));
+                joined = joined.filter(p => p.length > 1);
+                if (contourSmoothness > 0.1) {
+                    const segments = 1 + Math.round(4 * contourSmoothness);
+                    const tension = 0.3 + 0.4 * contourSmoothness;
+                    joined = joined.map(p => Engine.smoothPathCornerAware(p, segments, tension, 30));
+                }
                 return { contours: joined, raw: rawContours, skippedJoining: false };
             }
 
@@ -3677,13 +3091,13 @@
 
         const handleVisibilityChange = () => {
             isPageVisible = !document.hidden;
-            // Notify the marchingWaves instance of visibility change
             if (window.marchingWaves) {
                 marchingWaves.pageVisibilityChanged(isPageVisible);
-
-                // Trigger memory cleanup when tab becomes visible after being hidden
-                if (isPageVisible && marchingWaves.workerPool) {
-                    marchingWaves.workerPool.terminateIdleWorkers();
+                if (marchingWaves.workerPool) {
+                    marchingWaves.workerPool.broadcastVisibility(isPageVisible);
+                    if (isPageVisible) {
+                        marchingWaves.workerPool.terminateIdleWorkers();
+                    }
                 }
             }
 
@@ -3731,24 +3145,34 @@
             document.getElementById('outputCanvas')
         );
 
-        webGPUManager.init().then(available => {
-            const statusEl = document.getElementById('gpuStatus');
-            const statusText = document.getElementById('gpuStatusText');
-            const statusIcon = document.getElementById('gpuStatusIcon');
+        // Initialize GPU acceleration status (WebGPU), falls back to CPU automatically
+        function initGPUStatus() {
+            if (typeof gpuManager === 'undefined' || !gpuManager) return;
+            const gpuStatusEl = document.getElementById('gpuStatus');
+            const gpuStatusText = document.getElementById('gpuStatusText2');
+            const gpuStatusIcon = document.getElementById('gpuStatusIcon');
+            const readoutEl = document.getElementById('gpuStatusText');
 
-            if (available) {
-                // LOG_REMOVED:'WebGPU acceleration enabled (grayscale + Eikonal JFA)');
-                statusEl.className = 'status success';
-                statusText.textContent = 'ACTIVE (WebGPU)';
-                statusIcon.textContent = '⚡';
-            } else {
-                // LOG_REMOVED:'Using CPU fallback (WebGPU not available)');
-                statusEl.className = 'status warning';
-                statusText.textContent = 'INACTIVE (CPU Fallback)';
-                statusIcon.textContent = '⚠️';
-            }
-        });
-
+            gpuManager.init().then(ok => {
+                if (!gpuStatusEl || !gpuStatusText) return;
+                marchingWaves.gpuAvailable = ok;
+                marchingWaves.gpuInitError = ok ? null : gpuManager.initError;
+                if (readoutEl) readoutEl.textContent = ok ? 'GPU · WebGPU' : 'CPU';
+                if (ok) {
+                    gpuStatusEl.className = 'status success';
+                    gpuStatusText.textContent = gpuManager.getStatusDetail();
+                    gpuStatusIcon.textContent = '⚡';
+                } else {
+                    gpuStatusEl.className = 'status warning';
+                    gpuStatusText.textContent = 'Unavailable — CPU fallback';
+                    gpuStatusIcon.textContent = '⚠️';
+                    if (marchingWaves.gpuInitError) {
+                        console.warn('GPU unavailable:', marchingWaves.gpuInitError);
+                    }
+                }
+            });
+        }
+        initGPUStatus();
         // Initialize worker pool status
         if (typeof Worker !== 'undefined') {
             marchingWaves.initWorkerPool().then(success => {
@@ -3970,6 +3394,16 @@
         });
 
         const presets = {
+            'natural-contours': {
+                mode: 'luminance',
+                interval: 12,
+                lineWidth: 0.8,
+                threshold: 80,
+                lineColor: '#1a1a1a',
+                invert: true,
+                blurRadius: 1,
+                contrast: 1.05
+            },
             'fluid': {
                 mode: 'streamlines',
                 interval: 5,
@@ -3978,7 +3412,8 @@
                 lineColor: '#1a1a2e',
                 invert: true,
                 contourSmoothness: 1.0,
-                simplification: 0.8
+                simplification: 0.8,
+                blurRadius: 1
             },
             'cyberpunk': {
                 mode: 'contours',
@@ -3990,7 +3425,8 @@
                 edgeGuidance: true,
                 edgeSensitivity: 0.9,
                 simplification: 0.2,
-                contourSmoothness: 0.2
+                contourSmoothness: 0.2,
+                contrast: 1.35
             },
             'ink-blot': {
                 mode: 'stipple',
@@ -3998,7 +3434,8 @@
                 lineWidth: 1.0,
                 threshold: 30,
                 lineColor: '#000000',
-                invert: true
+                invert: true,
+                contrast: 1.15
             },
             'ethereal': {
                 mode: 'contours',
@@ -4008,7 +3445,8 @@
                 lineColor: '#88ccff',
                 invert: false,
                 contourSmoothness: 0.9,
-                detailLevel: 1.0
+                detailLevel: 1.0,
+                blurRadius: 2
             },
             'sketch': {
                 mode: 'hatch',
@@ -4017,7 +3455,8 @@
                 threshold: 50,
                 lineColor: '#000000',
                 invert: true,
-                simplification: 0.5
+                simplification: 0.5,
+                blurRadius: 1
             },
             'topo-map': {
                 mode: 'contours',
@@ -4027,7 +3466,8 @@
                 lineColor: '#1a1a1a',
                 invert: true,
                 edgeGuidance: false,
-                contourSmoothness: 0.85
+                contourSmoothness: 0.85,
+                blurRadius: 1
             },
             'blueprint': {
                 mode: 'contours',
@@ -4037,7 +3477,8 @@
                 lineColor: '#0055ff',
                 invert: true,
                 edgeGuidance: true,
-                edgeSensitivity: 0.8
+                edgeSensitivity: 0.8,
+                contrast: 1.15
             },
             'flowing-silk': {
                 mode: 'streamlines',
@@ -4046,7 +3487,8 @@
                 threshold: 45,
                 lineColor: '#1a1a2e',
                 invert: true,
-                contourSmoothness: 0.95
+                contourSmoothness: 0.95,
+                blurRadius: 2
             },
             'marble-flow': {
                 mode: 'streamlines',
@@ -4055,7 +3497,8 @@
                 threshold: 50,
                 lineColor: '#2c3e50',
                 invert: true,
-                contourSmoothness: 0.8
+                contourSmoothness: 0.8,
+                blurRadius: 1
             },
             'ink-stipple': {
                 mode: 'stipple',
@@ -4097,9 +3540,11 @@
             document.getElementById('lineColor').value = preset.lineColor;
 
             document.getElementById('invert').checked = preset.invert;
-            document.getElementById('antiAlias').checked = preset.antiAlias;
-            document.getElementById('maxSegments').value = preset.maxSegments;
-            document.getElementById('maxSegValue').textContent = preset.maxSegments;
+            if (preset.antiAlias !== undefined) document.getElementById('antiAlias').checked = preset.antiAlias;
+            if (preset.maxSegments !== undefined) {
+                document.getElementById('maxSegments').value = preset.maxSegments;
+                document.getElementById('maxSegValue').textContent = preset.maxSegments;
+            }
 
             // Apply new adaptive contour parameters if they exist
             if (preset.edgeGuidance !== undefined) {
@@ -4112,6 +3557,16 @@
                 document.getElementById('contourSmoothnessValue').textContent = preset.contourSmoothness.toFixed(2);
                 document.getElementById('featureImportance').value = preset.featureImportance;
                 document.getElementById('featureImportanceValue').textContent = preset.featureImportance.toFixed(2);
+            }
+
+            // Apply preprocess params if they exist
+            if (preset.blurRadius !== undefined) {
+                document.getElementById('blurRadius').value = preset.blurRadius;
+                document.getElementById('blurRadiusValue').textContent = preset.blurRadius;
+            }
+            if (preset.contrast !== undefined) {
+                document.getElementById('contrast').value = preset.contrast;
+                document.getElementById('contrastValue').textContent = preset.contrast.toFixed(2);
             }
 
             const presetLabel = document.getElementById('presetSelect').options[document.getElementById('presetSelect').selectedIndex].text;
@@ -4127,29 +3582,20 @@
 
         document.getElementById('modeSelect').addEventListener('change', (e) => {
             const mode = e.target.value;
-            const intervalLabel = document.querySelector('label[for="interval"]') || document.querySelector('.control-group label');
-            // Find the label for interval - it's the first one in Parameters
-            const labels = document.querySelectorAll('.panel:nth-child(2) .control-group label');
-            if (labels[0]) {
-                labels[0].textContent = mode === 'streamlines' ? 'Streamline Spacing' : 
-                                        mode === 'stipple' || mode === 'tsp' ? 'Point Density' : 
-                                        mode === 'hatch' ? 'Hatch Spacing' : 'Contour Interval';
+            const hasAdvanced = mode === 'contours' || mode === 'streamlines';
+            
+            const intervalLabel = document.querySelector('#secParams .field-top:first-of-type label');
+            if (intervalLabel) {
+                intervalLabel.textContent = mode === 'streamlines' ? 'Streamline Spacing' :
+                    mode === 'hatch' ? 'Hatch Spacing' :
+                    mode === 'stipple' || mode === 'tsp' ? 'Point Density' : 'Level Step';
             }
             
-            // Show/Hide adaptive panels
-            const adaptivePanel = document.querySelectorAll('.panel')[2];
-            const performancePanel = document.querySelectorAll('.panel')[4];
-            
-            if (mode === 'streamlines' || mode === 'stipple' || mode === 'tsp' || mode === 'hatch') {
-                adaptivePanel.style.display = 'none';
-                // For performance, stipple/tsp don't use maxSegments the same way
-                document.getElementById('maxSegments').closest('.control-group').style.display = 'none';
-                document.getElementById('skipJoining').closest('.checkbox-group').style.display = 'none';
-            } else {
-                adaptivePanel.style.display = 'block';
-                document.getElementById('maxSegments').closest('.control-group').style.display = 'block';
-                document.getElementById('skipJoining').closest('.checkbox-group').style.display = 'block';
-            }
+            document.getElementById('secAdaptive').style.display = mode === 'contours' ? 'block' : 'none';
+            const maxField = document.getElementById('maxSegments').closest('.field');
+            const skipGroup = document.getElementById('skipJoining').closest('.checkbox-group');
+            if (maxField) maxField.style.display = hasAdvanced ? 'block' : 'none';
+            if (skipGroup) skipGroup.style.display = hasAdvanced ? 'flex' : 'none';
         });
 
         const generateSamplePattern = () => {
@@ -4169,12 +3615,13 @@
                     const dy = y - centerY;
                     const distance = Math.sqrt(dx * dx + dy * dy);
                     
+                    // Linear radial ramp scaled to the full tonal range below the
+                    // default threshold — produces evenly spaced contour rings.
                     let value;
                     if (distance > maxRadius) {
                         value = 1;
                     } else {
-                        value = distance / maxRadius;
-                        value = Math.pow(value, 0.5);
+                        value = 0.5 * (distance / maxRadius);
                     }
 
                     const brightness = Math.floor((1 - value) * 255);
@@ -4240,6 +3687,7 @@
             reader.onload = (e) => {
                 const img = new Image();
                 img.onload = () => {
+                    marchingWaves.clearProcessingData();
                     currentImage = img;
                     dropPreview.src = e.target.result;
                     dropPreview.style.display = 'block';
@@ -4265,6 +3713,15 @@
         });
 
         // New adaptive contour control listeners
+        document.getElementById('useGPU').addEventListener('change', (e) => {
+            marchingWaves.gpuEnabled = e.target.checked;
+        });
+        document.getElementById('blurRadius').addEventListener('input', (e) => {
+            document.getElementById('blurRadiusValue').textContent = e.target.value;
+        });
+        document.getElementById('contrast').addEventListener('input', (e) => {
+            document.getElementById('contrastValue').textContent = parseFloat(e.target.value).toFixed(2);
+        });
         document.getElementById('edgeGuidance').addEventListener('change', (e) => {
             document.getElementById('edgeSensitivity').disabled = !e.target.checked;
         });
@@ -4326,8 +3783,10 @@
                 showOrigins: document.getElementById('showOrigins').checked,
                 showGrid: document.getElementById('showGrid').checked,
                 livePreview: document.getElementById('livePreview').checked,
-                useGPU: document.getElementById('useGPU').checked,
                 useWorkers: document.getElementById('useWorkers').checked,
+                useGPU: document.getElementById('useGPU').checked,
+                blurRadius: parseFloat(document.getElementById('blurRadius').value),
+                contrast: parseFloat(document.getElementById('contrast').value),
                 edgeGuidance: document.getElementById('edgeGuidance').checked,
                 edgeSensitivity: parseFloat(document.getElementById('edgeSensitivity').value),
                 detailLevel: parseFloat(document.getElementById('detailLevel').value),
@@ -4345,7 +3804,7 @@
                 currentSVG = await marchingWaves.processImage(currentImage, options);
 
                 dropPreview.style.display = 'none';
-                canvasContainer.style.display = 'block';
+                canvasContainer.style.display = 'flex';
                 selectionBtn.style.display = 'block'; // Show after generation
                 
                 if (!debugMode.checked || options.vizMode === 'final') {
@@ -4400,6 +3859,7 @@
             if (isProcessing) {
                 marchingWaves.cancel();
             }
+            marchingWaves.clearProcessingData();
             currentImage = null;
             currentSVG = null;
             dropPreview.src = '';

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>About Marching Waves · Contour Art Generator</title>
-<meta name="description" content="Marching Waves is a free browser-based tool that converts images into contour-based artworks using the Eikonal Equation with GPU acceleration.">
+<meta name="description" content="Marching Waves is a free browser-based tool that converts images into contour-based artworks using Marching Squares and the Eikonal Equation.">
 <meta name="theme-color" content="#0b0d12">
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/about.css">
@@ -34,7 +34,7 @@
         <span class="bebas">Marching<span class="approx">≈</span>Waves</span>
         <span class="h1-sub">Turn any image into flowing contour artwork.</span>
       </h1>
-      <p class="lead">Upload an image and watch the Eikonal Equation transform it into elegant contour lines, streamlines, stipple patterns, TSP art, or cross-hatching. GPU-accelerated and free.</p>
+      <p class="lead">Upload an image and watch it transform into elegant contour lines, streamlines, stipple patterns, TSP art, or cross-hatching. Free and runs entirely in your browser.</p>
       <a class="cta" href="index.html">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         Open the tool
@@ -50,8 +50,8 @@
       <div class="grid">
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13c4-9 8-9 12 0"/><path d="M4 13c4 9 8 9 12 0"/></svg>
-          <h3>5 generation modes</h3>
-          <p>Marching Contours, Flow Streamlines, Weighted Stipple, TSP Continuous Line, and Cross Hatch — each with its own artistic character.</p>
+          <h3>6 generation modes</h3>
+          <p>Luminance Contours, Eikonal Contours, Flow Streamlines, Weighted Stipple, TSP Continuous Line, and Cross Hatch — each with its own artistic character.</p>
         </article>
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
@@ -65,18 +65,18 @@
         </article>
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-          <h3>GPU acceleration</h3>
-          <p>WebGPU-powered computation for fast processing. Automatically falls back to CPU when needed.</p>
+          <h3>Luminance + Eikonal modes</h3>
+          <p>Choose direct luminance contours for speed or Eikonal equation contours for adaptive, flow-aware line art.</p>
         </article>
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          <h3>SVG export</h3>
-          <p>Export your results as SVG for vector editing in Illustrator or other design tools.</p>
+          <h3>SVG export for plotters</h3>
+          <p>Export clean vector paths as SVG — ready for pen plotters and alternative plotting software (Axidraw, Inkscape, LightBurn, etc.).</p>
         </article>
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-          <h3>Worker pool</h3>
-          <p>Background processing via Web Workers means the UI stays responsive even during heavy computation.</p>
+          <h3>GPU + worker pool</h3>
+          <p>WebGPU accelerates preprocessing, gradients, and the Eikonal solver (with automatic CPU fallback); Web Workers keep the UI responsive.</p>
         </article>
       </div>
     </div>
@@ -122,7 +122,7 @@
         </article>
         <article class="panel step">
           <h3>Choose your mode &amp; settings</h3>
-          <p>Pick from 5 generation modes, adjust contour interval, line width, adaptive settings, and style options.</p>
+          <p>Pick from 6 generation modes, adjust level step, line width, adaptive settings, and style options.</p>
         </article>
         <article class="panel step">
           <h3>Generate &amp; export</h3>
@@ -153,7 +153,7 @@
     <div class="inner">
       <h2>Frequently asked questions</h2>
       <div class="panel" style="padding:8px 28px;margin-top:24px">
-        <details open><summary>What is Marching Waves?</summary><p>A free browser-based tool that converts images into contour-based artwork using the Eikonal Equation. Upload any image and generate one of five distinct artistic styles.</p></details>
+        <details open><summary>What is Marching Waves?</summary><p>A free browser-based tool that converts images into contour-based artwork using Marching Squares and the Eikonal Equation. Upload any image and choose from six distinct artistic styles.</p></details>
         <details><summary>Is it free? Do I need to sign up?</summary><p>Completely free. No registration, no installation, no data uploads to servers. Everything runs locally in your browser.</p></details>
         <details><summary>What image formats are supported?</summary><p>Any image file your browser can display — JPEG, PNG, WebP, GIF, and more. Drag and drop or click to select.</p></details>
         <details><summary>Can I export my results?</summary><p>Yes. Export as SVG for vector editing in design tools like Illustrator or Inkscape.</p></details>

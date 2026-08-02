@@ -1,64 +1,16 @@
 // Web Worker for Marching Waves - CPU-intensive computations
-// This worker handles all processing that should continue in background tabs
+importScripts('js/engine.js');
 
-self.onmessage = function(e) {
-    const { type, taskId, method, params, options } = e.data;
-    
-    try {
-        switch (method) {
-            case 'solveEikonalCPU':
-                handleSolveEikonalCPU(taskId, params, options);
-                break;
-            case 'extractContoursAdaptive':
-                handleExtractContoursAdaptive(taskId, params, options);
-                break;
-            case 'extractStreamlines':
-                handleExtractStreamlines(taskId, params, options);
-                break;
-            case 'extractStipple':
-                handleExtractStipple(taskId, params, options);
-                break;
-            case 'extractTSP':
-                handleExtractTSP(taskId, params, options);
-                break;
-            case 'extractHatch':
-                handleExtractHatch(taskId, params, options);
-                break;
-            default:
-                postError(taskId, `Unknown method: ${method}`);
-        }
-    } catch (error) {
-        postError(taskId, error.message, error.stack);
-    }
-};
-
-// Helper functions for posting messages
 function postProgress(taskId, percent, message) {
-    self.postMessage({
-        type: 'progress',
-        taskId,
-        percent,
-        message,
-        timestamp: Date.now()
-    });
+    self.postMessage({ type: 'progress', taskId, percent, message, timestamp: Date.now() });
 }
 
-function postResult(taskId, data, performance = {}, transferList = []) {
-    self.postMessage({
-        type: 'result',
-        taskId,
-        data,
-        performance,
-        timestamp: Date.now()
-    }, transferList);
+function postResult(taskId, data, perf = {}, transferList = []) {
+    self.postMessage({ type: 'result', taskId, data, performance: perf, timestamp: Date.now() }, transferList);
 }
 
 function postError(taskId, message, stack) {
-    self.postMessage({
-        type: 'error',
-        taskId,
-        error: { message, stack }
-    });
+    self.postMessage({ type: 'error', taskId, error: { message, stack } });
 }
 
 // Check for cancellation or pause signals
@@ -66,120 +18,65 @@ let isCancelled = false;
 let isPaused = false;
 let pauseResolve = null;
 
+const yieldChannel = new MessageChannel();
+let yieldResolve = null;
+yieldChannel.port1.onmessage = () => {
+    if (yieldResolve) { const r = yieldResolve; yieldResolve = null; r(); }
+};
+function yieldToBrowser() {
+    return new Promise(resolve => { yieldResolve = resolve; yieldChannel.port2.postMessage(null); });
+}
+
+let isVisible = true;
+
 self.onmessage = function(e) {
     const { type, taskId, method, params, options } = e.data;
 
-    if (type === 'cancel') {
-        isCancelled = true;
-    } else if (type === 'pause') {
-        isPaused = true;
-    } else if (type === 'resume') {
-        isPaused = false;
-        if (pauseResolve) {
-            pauseResolve();
-            pauseResolve = null;
-        }
-    } else if (type === 'cleanup') {
-        // Cleanup memory after task completion
-        cleanupWorkerMemory();
-    } else {
-        // Regular task execution
-        try {
-            executeTask(taskId, method, params, options);
-        } catch (error) {
-            postError(taskId, error.message, error.stack);
-        }
+    if (type === 'cancel') { isCancelled = true; return; }
+    if (type === 'pause') { isPaused = true; return; }
+    if (type === 'resume') { isPaused = false; if (pauseResolve) { pauseResolve(); pauseResolve = null; } return; }
+    if (type === 'cleanup') { cleanupWorkerMemory(); return; }
+    if (type === 'visibility') { isVisible = e.data.isVisible; batchSize = isVisible ? 1000 : 4000; return; }
+
+    // Regular task execution
+    isCancelled = false;
+    isPaused = false;
+    pauseResolve = null;
+    try {
+        executeTask(taskId, method, params, options);
+    } catch (error) {
+        postError(taskId, error.message, error.stack);
     }
 };
 
 async function executeTask(taskId, method, params, options) {
-    // Reset state
-    isCancelled = false;
-    isPaused = false;
-    pauseResolve = null;
-    
     try {
         switch (method) {
-            case 'solveEikonalCPU':
-                await handleSolveEikonalCPU(taskId, params, options);
-                break;
-            case 'extractContoursAdaptive':
-                await handleExtractContoursAdaptive(taskId, params, options);
-                break;
-            case 'extractStreamlines':
-                await handleExtractStreamlines(taskId, params, options);
-                break;
-            case 'extractStipple':
-                await handleExtractStipple(taskId, params, options);
-                break;
-            case 'extractTSP':
-                await handleExtractTSP(taskId, params, options);
-                break;
-            case 'extractHatch':
-                await handleExtractHatch(taskId, params, options);
-                break;
-            default:
-                postError(taskId, `Unknown method: ${method}`);
+            case 'solveEikonalCPU': await handleSolveEikonalCPU(taskId, params, options); break;
+            case 'extractContoursAdaptive': await handleExtractContoursAdaptive(taskId, params, options); break;
+            case 'extractStreamlines': await handleExtractStreamlines(taskId, params, options); break;
+            case 'extractStipple': await handleExtractStipple(taskId, params, options); break;
+            case 'extractTSP': await handleExtractTSP(taskId, params, options); break;
+            case 'extractHatch': await handleExtractHatch(taskId, params, options); break;
+            default: postError(taskId, 'Unknown method: ' + method);
         }
     } catch (error) {
         postError(taskId, error.message, error.stack);
     }
 }
 
-function checkCancelled() {
-    if (isCancelled) {
-        throw new Error('Cancelled by user');
-    }
-}
+function checkCancelled() { if (isCancelled) throw new Error('Cancelled by user'); }
 
 async function checkPause() {
-    if (isPaused) {
-        await new Promise(resolve => {
-            pauseResolve = resolve;
-        });
-    }
+    if (isPaused) await new Promise(resolve => { pauseResolve = resolve; });
 }
-
-// MessageChannel is NOT throttled like setTimeout
-const yieldChannel = new MessageChannel();
-let yieldResolve = null;
-
-yieldChannel.port1.onmessage = () => {
-    if (yieldResolve) {
-        const resolve = yieldResolve;
-        yieldResolve = null;
-        resolve();
-    }
-};
-
-function yieldToBrowser() {
-    return new Promise(resolve => {
-        yieldResolve = resolve;
-        yieldChannel.port2.postMessage(null);
-    });
-}
-
-// Visibility state for adaptive batch sizing
-let isVisible = true;
-
-// Update visibility handler
-const originalOnmessage = self.onmessage;
-self.onmessage = function(e) {
-    const { type } = e.data;
-
-    if (type === 'visibility') {
-        isVisible = e.data.isVisible;
-    } else {
-        originalOnmessage(e);
-    }
-};
 
 // ============================================
 // CPU-BASED FAST MARCHING METHOD SOLVER
 // ============================================
 async function handleSolveEikonalCPU(taskId, params, options) {
     const { grayData, width, height, threshold } = params;
-    const { showProgress } = options;
+    const { showProgress, streamWavefront } = options;
     
     const t0 = performance.now();
     
@@ -208,6 +105,39 @@ async function handleSolveEikonalCPU(taskId, params, options) {
                 heap.push({ x, y, value: 0 });
             }
         }
+    }
+    
+    const batchSize = 4000;
+    
+    // Wavefront streaming buffers
+    let waveIndices = [];
+    let waveValues = [];
+    function flushWavefront() {
+        if (waveIndices.length > 0) {
+            const indices = new Uint32Array(waveIndices);
+            const values = new Float32Array(waveValues);
+            self.postMessage(
+                { type: 'wavefront', taskId, indices, values },
+                [indices.buffer, values.buffer]
+            );
+            waveIndices = [];
+            waveValues = [];
+        }
+    }
+    
+    // Emit seeds as initial wavefront frame
+    if (streamWavefront) {
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const i = idx(x, y);
+                if (grayData[i] < threshold) {
+                    waveIndices.push(i);
+                    waveValues.push(0);
+                    if (waveIndices.length >= batchSize) flushWavefront();
+                }
+            }
+        }
+        if (waveIndices.length > 0) flushWavefront();
     }
     
     // Heap operations
@@ -250,14 +180,23 @@ async function handleSolveEikonalCPU(taskId, params, options) {
     // Fast Marching Method
     const f = grayData;
     let processed = 0;
-    const batchSize = isVisible ? 1000 : 4000;
     
     while (heap.length > 0) {
         const current = heapPop();
         if (!current) break;
         const { x, y } = current;
         const currentIdx = idx(x, y);
+        
+        // Stale-pop guard: skip heap entries overtaken by better values
+        if (current.value > solution[currentIdx]) continue;
         visited[currentIdx] = 1;
+        
+        // Collect wavefront delta (first time each pixel is finalized)
+        if (streamWavefront) {
+            waveIndices.push(currentIdx);
+            waveValues.push(solution[currentIdx]);
+            if (waveIndices.length >= batchSize) flushWavefront();
+        }
         
         const neighbors = [
             { x: x - 1, y },
@@ -321,6 +260,9 @@ async function handleSolveEikonalCPU(taskId, params, options) {
         // Periodic updates
         processed++;
         if (processed % batchSize === 0) {
+            // Flush any pending wavefront deltas before yielding
+            if (streamWavefront && waveIndices.length > 0) flushWavefront();
+            
             checkCancelled();
             await checkPause();
             
@@ -333,170 +275,81 @@ async function handleSolveEikonalCPU(taskId, params, options) {
         }
     }
     
+    // Flush remaining wavefront deltas
+    if (streamWavefront && waveIndices.length > 0) flushWavefront();
+    
     const t1 = performance.now();
-    const performance = {
+    const perf = {
         totalMs: t1 - t0,
         method: 'CPU FMM',
         cellsProcessed: processed
     };
     
     // Transfer solution as transferable object for better performance
-    postResult(taskId, { solution }, performance, [solution.buffer]);
+    postResult(taskId, { solution }, perf, [solution.buffer]);
 }
 
 // ============================================
 // ADAPTIVE CONTOUR EXTRACTION
 // ============================================
 async function handleExtractContoursAdaptive(taskId, params, options) {
-    const { solution, imageData, width, height, interval, maxSegments } = params;
-    const { skipJoining, showProgress, edgeGuidance, edgeSensitivity, detailLevel, contourSmoothness } = options;
-    
+    const {
+        solution, imageData, width, height, interval, maxSegments,
+        gradMag, edgeDistance,
+        edgeGuidance = true, edgeSensitivity = 0.6,
+        detailLevel = 0.7, contourSmoothness = 0.5, featureImportance = 0.6
+    } = params;
+    const { showProgress } = options;
+
     const t0 = performance.now();
-    
-    // Compute edge map and gradient
-    const edgeMap = edgeGuidance ? computeEdgeMap(imageData, width, height) : null;
-    const { gradMag } = computeDistanceFieldGradient(solution, width, height);
-    
-    // Find min/max values
+
+    // Edge guidance: warp the scalar field toward nearby image edges so contour
+    // lines snap to detected features (edgeDistance supplied by GPU/CPU pre-pass).
+    let field = solution;
+    if (edgeGuidance && edgeDistance) {
+        field = Engine.applyEdgeWarp(solution, edgeDistance, width, height, edgeSensitivity);
+    }
+
+    // Find min/max values of the (possibly warped) field
     let min = Infinity, max = -Infinity;
-    for (let i = 0; i < solution.length; i++) {
-        const v = solution[i];
+    for (let i = 0; i < field.length; i++) {
+        const v = field[i];
         if (v < min) min = v;
         if (v > max) max = v;
     }
-    
-    // Generate adaptive levels
-    const levels = generateAdaptiveLevels(solution, width, height, interval, min, max, gradMag, detailLevel);
-    
-    const safeGet = (x, y) => {
-        if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
-        return solution[y * width + x];
-    };
-    
-    const interp = (v1, v2, level) => {
-        if (v1 === Infinity || v2 === Infinity) return 0.5;
-        const diff = v2 - v1;
-        if (Math.abs(diff) < 0.00001) return 0.5;
-        return Math.max(0, Math.min(1, (level - v1) / diff));
-    };
-    
-    const rawContours = [];
-    let totalLines = 0;
-    let processed = 0;
-    
-    for (const level of levels) {
-        const levelLines = [];
-        
-        for (let y = 0; y < height - 1; y++) {
-            for (let x = 0; x < width - 1; x++) {
-                const v00 = safeGet(x, y);
-                const v10 = safeGet(x + 1, y);
-                const v01 = safeGet(x, y + 1);
-                const v11 = safeGet(x + 1, y + 1);
-                
-                let code = 0;
-                if (v00 >= level) code |= 1;
-                if (v10 >= level) code |= 2;
-                if (v01 >= level) code |= 4;
-                if (v11 >= level) code |= 8;
-                
-                const lines = [];
-                
-                const nAmp = interval * 0.08;
-                const addLine = (x1, y1, x2, y2) => {
-                    const rx1 = x + x1 + noiseDisplace(x + x1, y + y1, nAmp);
-                    const ry1 = y + y1 + noiseDisplace(y + y1, x + x1, nAmp);
-                    const rx2 = x + x2 + noiseDisplace(x + x2, y + y2, nAmp);
-                    const ry2 = y + y2 + noiseDisplace(y + y2, x + x2, nAmp);
-                    if (!isFinite(rx1) || !isFinite(ry1) || !isFinite(rx2) || !isFinite(ry2)) return;
-                    if (edgeGuidance && edgeSensitivity > 0.1) {
-                        const p1 = snapToEdge(rx1, ry1, level, edgeMap, solution, width, height, edgeSensitivity, interval);
-                        const p2 = snapToEdge(rx2, ry2, level, edgeMap, solution, width, height, edgeSensitivity, interval);
-                        if (p1 && isFinite(p1.x) && isFinite(p1.y) && p2 && isFinite(p2.x) && isFinite(p2.y)) {
-                            lines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
-                        }
-                    } else {
-                        lines.push({ x1: rx1, y1: ry1, x2: rx2, y2: ry2 });
-                    }
-                };
-                
-                switch (code) {
-                    case 1:
-                    case 14:
-                        addLine(0, interp(v00, v10, level), 0.5, 0); break;
-                    case 2:
-                    case 13:
-                        addLine(0.5, 0, 1, interp(v10, v11, level)); break;
-                    case 3:
-                    case 12:
-                        addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level)); break;
-                    case 4:
-                    case 11:
-                        addLine(0.5, 1, interp(v01, v11, level), 1); break;
-                    case 5:
-                        const centerValue5 = (v00 + v10 + v01 + v11) / 4;
-                        const connectSameSide5 = centerValue5 >= level;
-                        if (connectSameSide5) {
-                            addLine(0, interp(v00, v10, level), 0.5, 1);
-                            addLine(0.5, 0, interp(v01, v11, level), 1);
-                        } else {
-                            addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
-                            addLine(0.5, 0, 0.5, 1);
-                        }
-                        break;
-                    case 6:
-                    case 9:
-                        addLine(0.5, 0, 0.5, 1); break;
-                    case 7:
-                    case 8:
-                        addLine(0, interp(v00, v10, level), 0.5, 1);
-                        addLine(0.5, 0, 1, interp(v10, v11, level)); break;
-                    case 10:
-                        const centerValue10 = (v00 + v10 + v01 + v11) / 4;
-                        const connectSameSide10 = centerValue10 >= level;
-                        if (connectSameSide10) {
-                            addLine(0, interp(v00, v10, level), 1, interp(v01, v11, level));
-                            addLine(0.5, 0, 0.5, 1);
-                        } else {
-                            addLine(0, interp(v00, v10, level), 0.5, 1);
-                            addLine(0.5, 0, interp(v01, v11, level), 1);
-                        }
-                        break;
-                }
-                
-                levelLines.push(...lines);
-                
-                // Periodic updates
-                processed++;
-                const batchSize = isVisible ? 5000 : 20000;
-                if (processed % batchSize === 0) {
-                    checkCancelled();
-                    await checkPause();
-                    
-                    if (showProgress) {
-                        const progress = 60 + (processed / (width * height)) * 20;
-                        postProgress(taskId, progress, `Extracting contours...`);
-                    }
-                    
-                    await yieldToBrowser();
-                }
-            }
-        }
-        
-        totalLines += levelLines.length;
-        if (levelLines.length > 0) {
-            rawContours.push({ level, lines: levelLines });
-        }
-    }
-    
+
+    // Adaptive levels driven by the *image* gradient histogram (from GPU Sobel or
+    // CPU fallback) so detailed regions receive more contour lines.
+    const gradForLevels = gradMag || computeDistanceFieldGradient(field, width, height).gradMag;
+    const levels = Engine.generateAdaptiveLevelsGrad(
+        field, width, height, interval, min, max, gradForLevels, detailLevel, featureImportance
+    );
+
+    // Use correct marching squares from engine
+    const rawContours = Engine.marchSquaresField(field, width, height, levels);
+
     const t1 = performance.now();
-    const performance = {
-        totalMs: t1 - t0,
+    const totalLines = rawContours.reduce(function(s, c) { return s + c.lines.length; }, 0);
+
+    // Join segments into continuous paths
+    let joined = Engine.joinSegments(rawContours);
+    joined = joined.map(p => Engine.simplifyPath(p, 0.8)).filter(p => p.length > 1);
+    if (contourSmoothness > 0.1) {
+        const segments = 1 + Math.round(4 * contourSmoothness);
+        const tension = 0.3 + 0.4 * contourSmoothness;
+        joined = joined.map(p => Engine.smoothPathCornerAware(p, segments, tension, 30));
+    }
+
+    const t2 = performance.now();
+    const perf = {
+        totalMs: t2 - t0,
         levelsProcessed: levels.length,
-        linesExtracted: totalLines
+        linesExtracted: totalLines,
+        joinedPaths: joined.length,
+        edgeGuided: !!(edgeGuidance && edgeDistance)
     };
-    
-    postResult(taskId, { contours: [], raw: rawContours, skippedJoining: true }, performance);
+
+    postResult(taskId, { contours: joined, raw: rawContours, skippedJoining: false }, perf);
 }
 
 // ============================================
@@ -504,11 +357,34 @@ async function handleExtractContoursAdaptive(taskId, params, options) {
 // ============================================
 async function handleExtractStreamlines(taskId, params, options) {
     const { solution, grayData, width, height } = params;
-    const { interval = 8, maxSegments = 50000, threshold = 0.5, edgeSensitivity = 0.5, showProgress } = options;
+    const { interval = 8, maxSegments = 50000, edgeSensitivity = 0.5, showProgress } = options;
+    // Threshold arrives normalized (0..1) in params; options.threshold is the raw UI value
+    const threshold = params.threshold != null ? params.threshold : 0.5;
     
     const t0 = performance.now();
     
     const { gradX, gradY } = computeDistanceFieldGradient(solution, width, height);
+
+    // When the distance field is degenerate (flat — e.g. seeds cover most of the
+    // image), fall back to tracing the image's own gradient so streamlines still
+    // follow the visual flow of the picture.
+    let gradMean = 0, gradCount = 0, usable = 0;
+    for (let i = 0; i < solution.length; i++) {
+        if (grayData[i] >= threshold) continue; // only judge the seed region
+        const m = Math.sqrt(gradX[i] * gradX[i] + gradY[i] * gradY[i]);
+        gradMean += m;
+        if (m > 0.001) usable++;
+        gradCount++;
+    }
+    gradMean = gradCount > 0 ? gradMean / gradCount : 0;
+    // Fall back when most seed pixels sit on a flat part of the field
+    if ((gradCount === 0 || usable / Math.max(1, gradCount) < 0.5) && typeof Engine !== 'undefined' && Engine.sobelGradientCPU) {
+        const imgGrad = Engine.sobelGradientCPU(grayData, width, height);
+        for (let i = 0; i < solution.length; i++) {
+            gradX[i] = imgGrad.gradX[i];
+            gradY[i] = imgGrad.gradY[i];
+        }
+    }
     
     // Generate seeds
     const seeds = [];
@@ -600,11 +476,18 @@ async function handleExtractStreamlines(taskId, params, options) {
                 
                 const k1x = (g1x / mag1) * stepSize * direction + (-g1y / mag1) * curl1;
                 const k1y = (g1y / mag1) * stepSize * direction + (g1x / mag1) * curl1;
-                
+
                 const nx = cx + k1x;
                 const ny = cy + k1y;
-                
-                if (isOccupied(nx, ny)) break;
+
+                // Only entering a *different*, already-claimed cell blocks the trace:
+                // consecutive steps (2px) often stay inside the same occupancy cell
+                // (6.4px), which must not kill the line.
+                const cgx = Math.floor(cx / occGridSize);
+                const cgy = Math.floor(cy / occGridSize);
+                const tgx = Math.floor(nx / occGridSize);
+                const tgy = Math.floor(ny / occGridSize);
+                if ((tgx !== cgx || tgy !== cgy) && isOccupied(nx, ny)) break;
                 
                 if (direction === 1) {
                     path.push({ x: nx, y: ny });
@@ -624,12 +507,12 @@ async function handleExtractStreamlines(taskId, params, options) {
     }
     
     const t1 = performance.now();
-    const performance = {
+    const perf = {
         totalMs: t1 - t0,
         pathsGenerated: paths.length
     };
     
-    postResult(taskId, { contours: paths, raw: [], skippedJoining: true }, performance);
+    postResult(taskId, { contours: paths, raw: [], skippedJoining: true }, perf);
 }
 
 // ============================================
@@ -637,7 +520,8 @@ async function handleExtractStreamlines(taskId, params, options) {
 // ============================================
 async function handleExtractStipple(taskId, params, options) {
     const { grayData, width, height } = params;
-    const { interval = 8, threshold = 0.5, showProgress } = options;
+    const { interval = 8, showProgress } = options;
+    const threshold = params.threshold != null ? params.threshold : 0.5;
     
     const t0 = performance.now();
     
@@ -768,99 +652,100 @@ async function handleExtractStipple(taskId, params, options) {
     }
     
     const t1 = performance.now();
-    const dotPaths = points.map(p => [{ x: p.x, y: p.y }, { x: p.x + 0.1, y: p.y + 0.1 }]);
+    const dotPaths = points.map(p => [{ x: p.x, y: p.y }]);
     
-    const performance = {
+    const perf = {
         totalMs: t1 - t0,
         dotsGenerated: points.length
     };
     
-    postResult(taskId, { contours: dotPaths, raw: [], skippedJoining: true }, performance);
+    postResult(taskId, { contours: dotPaths, raw: [], skippedJoining: true, stipplePoints: points }, perf);
 }
 
 // ============================================
 // TSP EXTRACTION (NEAREST NEIGHBOR)
 // ============================================
 async function handleExtractTSP(taskId, params, options) {
-    const stippleResult = await new Promise(resolve => {
-        handleExtractStipple(taskId, params, { ...options, showProgress: false })
-            .then(result => resolve(result.data));
-    });
-    
-    const points = stippleResult.contours.map(p => p[0]);
-    if (points.length < 2) {
-        postResult(taskId, { contours: [], raw: [], skippedJoining: false }, { totalMs: 0 });
-        return;
+    let stippleData = null;
+    const realPost = postResult;
+    postResult = (id, data, perf, transfer) => {
+        if (id === taskId) { stippleData = data; }
+        else { realPost(id, data, perf, transfer); }
+    };
+    try { await handleExtractStipple(taskId, params, { ...options, showProgress: false }); }
+    finally { postResult = realPost; }
+
+    if (!stippleData) { postResult(taskId, { contours: [], raw: [], skippedJoining: false }, { totalMs: 0 }); return; }
+    let points = stippleData.contours.map(p => p[0]);
+    if (points.length < 2) { postResult(taskId, { contours: [], raw: [], skippedJoining: false }, { totalMs: 0 }); return; }
+
+    const MAX_TSP_POINTS = 4000;
+    if (points.length > MAX_TSP_POINTS) {
+        const sampled = [];
+        const step = points.length / MAX_TSP_POINTS;
+        for (let i = 0; i < MAX_TSP_POINTS; i++) { sampled.push(points[Math.floor(i * step)]); }
+        points = sampled;
     }
-    
+
     const t0 = performance.now();
     const { showProgress } = options;
-    
+
     const used = new Uint8Array(points.length);
     const cellSize = 30;
     const gridWidth = Math.ceil(params.width / cellSize);
     const gridHeight = Math.ceil(params.height / cellSize);
     const grid = Array(gridWidth * gridHeight).fill().map(() => []);
-    
+
     for (let i = 0; i < points.length; i++) {
         const gx = Math.floor(points[i].x / cellSize);
         const gy = Math.floor(points[i].y / cellSize);
         grid[gy * gridWidth + gx].push(i);
     }
-    
-    let currentIdx = 0;
+
+    let bestIdx = 0, bestDist = -1;
+    const cx = params.width / 2, cy = params.height / 2;
+    for (let i = 0; i < Math.min(points.length, 100); i++) {
+        const d = Math.abs(points[i].x - cx) + Math.abs(points[i].y - cy);
+        if (d > bestDist) { bestDist = d; bestIdx = i; }
+    }
+
+    let currentIdx = bestIdx;
     const orderedPoints = [points[currentIdx]];
     used[currentIdx] = 1;
     let remaining = points.length - 1;
-    const tspCheckInterval = isVisible ? 1000 : 4000;
+    const tspCheckInterval = isVisible ? 500 : 2000;
 
     while (remaining > 0) {
         if (remaining % tspCheckInterval === 0) {
-            checkCancelled();
-            await checkPause();
-            
-            if (showProgress) {
-                postProgress(taskId, 90 + (1 - remaining / points.length) * 10, `TSP: ${remaining} left...`);
-            }
-            
+            checkCancelled(); await checkPause();
+            if (showProgress) { postProgress(taskId, 90 + (1 - remaining / points.length) * 10, `TSP: ${remaining} left...`); }
             await yieldToBrowser();
         }
-        
+
         const cp = points[currentIdx];
         let nearestIdx = -1;
         let minDistSq = Infinity;
-        
         const gx = Math.floor(cp.x / cellSize);
         const gy = Math.floor(cp.y / cellSize);
-        
-        let searchRadius = 0;
-        let found = false;
-        
-        while (!found && searchRadius < Math.max(gridWidth, gridHeight)) {
-            for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-                for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-                    if (Math.abs(dx) !== searchRadius && Math.abs(dy) !== searchRadius && searchRadius > 0) continue;
-                    
-                    const ngx = gx + dx;
-                    const ngy = gy + dy;
-                    if (ngx >= 0 && ngx < gridWidth && ngy >= 0 && ngy < gridHeight) {
-                        const cell = grid[ngy * gridWidth + ngx];
-                        for (const pIdx of cell) {
-                            if (!used[pIdx]) {
-                                const dSq = (cp.x - points[pIdx].x)**2 + (cp.y - points[pIdx].y)**2;
-                                if (dSq < minDistSq) {
-                                    minDistSq = dSq;
-                                    nearestIdx = pIdx;
-                                    found = true;
-                                }
-                            }
-                        }
+
+        for (let sr = 0; sr < Math.max(gridWidth, gridHeight); sr++) {
+            let hit = false;
+            for (let dy = -sr; dy <= sr; dy++) {
+                for (let dx = -sr; dx <= sr; dx++) {
+                    if (Math.abs(dx) !== sr && Math.abs(dy) !== sr && sr > 0) continue;
+                    const ngx = gx + dx, ngy = gy + dy;
+                    if (ngx < 0 || ngx >= gridWidth || ngy < 0 || ngy >= gridHeight) continue;
+                    for (const pIdx of grid[ngy * gridWidth + ngx]) {
+                        if (used[pIdx]) continue;
+                        const dSq = (cp.x - points[pIdx].x) ** 2 + (cp.y - points[pIdx].y) ** 2;
+                        if (dSq < minDistSq) { minDistSq = dSq; nearestIdx = pIdx; }
+                        hit = true;
                     }
                 }
             }
-            searchRadius++;
+            if (hit) break;
         }
-        
+
         if (nearestIdx !== -1) {
             orderedPoints.push(points[nearestIdx]);
             used[nearestIdx] = 1;
@@ -868,16 +753,12 @@ async function handleExtractTSP(taskId, params, options) {
             remaining--;
         } else break;
     }
-    
-    const improved = optimizeTSP2Opt(orderedPoints);
-    
+
+    const improved = orderedPoints.length < 20000 ? optimizeTSP2Opt(orderedPoints) : orderedPoints;
+
     const t1 = performance.now();
-    const performance = {
-        totalMs: t1 - t0,
-        pointsConnected: improved.length
-    };
-    
-    postResult(taskId, { contours: [improved], raw: [], skippedJoining: false }, performance);
+    const perf = { totalMs: t1 - t0, pointsConnected: improved.length };
+    postResult(taskId, { contours: [improved], raw: [], skippedJoining: false }, perf);
 }
 
 function optimizeTSP2Opt(points) {
@@ -932,7 +813,8 @@ function computeDominantAngle(grayData, width, height) {
 
 async function handleExtractHatch(taskId, params, options) {
     const { grayData, width, height } = params;
-    const { interval = 10, threshold = 0.5, showProgress } = options;
+    const { interval = 10, showProgress } = options;
+    const threshold = params.threshold != null ? params.threshold : 0.5;
     
     const t0 = performance.now();
     
@@ -1007,38 +889,17 @@ async function handleExtractHatch(taskId, params, options) {
     }
     
     const t1 = performance.now();
-    const performance = {
+    const perf = {
         totalMs: t1 - t0,
         linesGenerated: lines.length
     };
     
-    postResult(taskId, { contours: lines, raw: [], skippedJoining: true }, performance);
+    postResult(taskId, { contours: lines, raw: [], skippedJoining: true }, perf);
 }
 
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
-function computeEdgeMap(imageData, width, height) {
-    const edgeMap = new Float32Array(width * height);
-    const data = imageData.data;
-    
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const idx = y * width + x;
-            const idxRight = idx + 1;
-            const idxDown = idx + width;
-            
-            if (x < width - 1 && y < height - 1) {
-                const gx = data[idxRight * 4] - data[idx * 4];
-                const gy = data[idxDown * 4] - data[idx * 4];
-                edgeMap[idx] = Math.sqrt(gx * gx + gy * gy);
-            }
-        }
-    }
-    
-    return edgeMap;
-}
-
 function computeDistanceFieldGradient(solution, width, height) {
     const gradX = new Float32Array(width * height);
     const gradY = new Float32Array(width * height);
@@ -1080,10 +941,6 @@ function smoothNoise(x, y) {
     return v00 + (v10 - v00) * sx + (v01 - v00) * sy + (v11 - v01 - v10 + v00) * sx * sy;
 }
 
-function noiseDisplace(x, y, amp) {
-    return amp * smoothNoise(x * 0.5 + 100, y * 0.5 + 200) + amp * 0.5 * smoothNoise(x * 1.1 + 300, y * 1.1 + 400);
-}
-
 function generateAdaptiveLevels(solution, width, height, interval, min, max, gradMag, detailLevel) {
     const levels = [];
     
@@ -1103,36 +960,6 @@ function generateAdaptiveLevels(solution, width, height, interval, min, max, gra
     }
     
     return levels;
-}
-
-function snapToEdge(x, y, level, edgeMap, solution, width, height, sensitivity, interval) {
-    let bestX = x;
-    let bestY = y;
-    let bestEdgeVal = 0;
-
-    const searchRadius = 3;
-    for (let dy = -searchRadius; dy <= searchRadius; dy++) {
-        for (let dx = -searchRadius; dx <= searchRadius; dx++) {
-            const nx = x + dx;
-            const ny = y + dy;
-
-            if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-
-            const idx = Math.floor(ny) * width + Math.floor(nx);
-            const edgeVal = edgeMap ? edgeMap[idx] : 0;
-
-            if (edgeVal > bestEdgeVal) {
-                bestEdgeVal = edgeVal;
-                bestX = nx;
-                bestY = ny;
-            }
-        }
-    }
-
-    return {
-        x: x + (bestX - x) * sensitivity,
-        y: y + (bestY - y) * sensitivity
-    };
 }
 
 // Cleanup function to free memory after task completion

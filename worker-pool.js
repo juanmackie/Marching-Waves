@@ -54,6 +54,12 @@ class WorkerPool {
                             }
                             break;
 
+                        case 'wavefront':
+                            if (task.onWavefront) {
+                                task.onWavefront(e.data.indices, e.data.values);
+                            }
+                            break;
+
                         case 'result':
                             // Mark task as complete
                             task.worker.taskCount--;
@@ -121,6 +127,7 @@ class WorkerPool {
             options,
             worker,
             onProgress: options.onProgress || null,
+            onWavefront: options.onWavefront || null,
             resolve: null,
             reject: null
         };
@@ -138,16 +145,22 @@ class WorkerPool {
         promise.worker = worker;
         
         // Extract onProgress callback and create clean options for worker
-        const { onProgress, ...optionsWithoutCallback } = options;
+        const { onProgress, onWavefront, ...optionsWithoutCallback } = options;
+        
+        // Debug: deep scan for functions
+        function scan(obj, path) {
+            if (!obj || typeof obj !== 'object') return;
+            for (const k of Object.keys(obj)) {
+                const v = obj[k];
+                if (typeof v === 'function') console.error('FOUND-FN in msg.' + path + '.' + k);
+                else if (typeof v === 'object' && !ArrayBuffer.isView(v) && !(v instanceof ArrayBuffer)) scan(v, path + '.' + k);
+            }
+        }
+        const msgToSend = { type: 'execute', taskId, method, params, options: optionsWithoutCallback };
+        scan(msgToSend, '');
         
         // Send task to worker
-        worker.postMessage({
-            type: 'execute',
-            taskId,
-            method,
-            params,
-            options: optionsWithoutCallback
-        });
+        worker.postMessage(msgToSend);
         
         return promise;
     }
