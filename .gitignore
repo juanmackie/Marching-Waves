@@ -1,0 +1,26 @@
+# Local secrets and environment configuration
+.env
+.env.*
+!.env.example
+*.local.md
+settings.local.json
+
+# Pi/subagent state and generated instructions
+.pi-subagents/
+.pi-subagents
+production-ready-vibe-coding-rules*.md
+
+# Dependencies and build artifacts
+node_modules/
+dist/
+build/
+coverage/
+*.tgz
+
+# Local/editor noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
