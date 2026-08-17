@@ -170,6 +170,11 @@
           <label for="fractalEffect">Fractal Detail</label>
           <span class="info-icon" data-tooltip="Subdivides long contour segments with fractal-like patterns." role="button" tabindex="0" aria-label="Information about Fractal Detail">ⓘ</span>
         </div>
+        <div class="field">
+          <div class="field-top"><label for="inkBleed">Ink Bleed</label><span class="ft-right"><span class="val" id="inkBleedValue">0.00</span></span></div>
+          <input type="range" id="inkBleed" min="0" max="1" step="0.05" value="0">
+          <div class="hint">Soft outward bloom around lines, simulating ink bleeding into the surface. 0 = crisp lines; higher = wider halo. Preserved in SVG export.</div>
+        </div>
       </div>
     </section>
 
@@ -295,6 +300,7 @@
     <script src="worker-pool.js"></script>
     <script src="js/engine.js"></script>
     <script src="js/gpu.js"></script>
+    <script src="js/paper-bleed.js"></script>
     <script>
         // Live Preview Manager - handles real-time visualization during processing
         class LivePreviewManager {
@@ -628,6 +634,7 @@
                 this.glitchEnabled = false;
                 this.fractalEnabled = false;
                 this.currentMode = 'luminance';
+                this.inkBleed = 0;
                 this.stipplePoints = null;
             }
 
@@ -851,6 +858,7 @@
                 this.glitchEnabled = options.glitchEffect || false;
                 this.fractalEnabled = options.fractalEffect || false;
                 this.currentMode = options.mode || 'luminance';
+                this.inkBleed = Math.max(0, Math.min(1, parseFloat(options.inkBleed) || 0));
 
                 // Initialize worker pool for background processing
                 await this.initWorkerPool();
@@ -2257,6 +2265,12 @@
                     this.ctx.stroke();
                 }
                 this.ctx.lineWidth = baseLineWidth;
+
+                // Paper ink bleed: soft outward bloom around the ink, crisp line kept on top.
+                // Pure render post-effect — contour geometry is untouched.
+                if (this.inkBleed > 0 && typeof inkBleedRenderer !== 'undefined' && inkBleedRenderer) {
+                    inkBleedRenderer.applyBleed(this.ctx, this.canvas, { strength: this.inkBleed });
+                }
             }
 
             async renderDebugVisualization(width, height, lineColor, lineWidth) {
@@ -2396,8 +2410,20 @@
                 }
 
                 let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n`;
+                const bleedEnabled = this.inkBleed > 0;
+                if (bleedEnabled) {
+                    // Two-layer soft bleed mirrors the canvas post-effect: a broad faint
+                    // wash plus a tighter darker edge, both stacked under the crisp ink.
+                    // Blurred results are alpha-scaled (feFuncA) so the halo stays soft
+                    // and never reads as a heavy glow.
+                    const outerStd = (0.9 + this.inkBleed * 4.6).toFixed(3); // broad faint soak
+                    const innerStd = (0.3 + this.inkBleed * 1.8).toFixed(3); // tight darker edge
+                    const outerAlpha = (0.15 + this.inkBleed * 0.25).toFixed(3); // halo opacity
+                    const innerAlpha = (0.13 + this.inkBleed * 0.23).toFixed(3); // edge opacity
+                    svg += `<defs>\n  <filter id="ink-bleed" x="-50%" y="-50%" width="200%" height="200%">\n    <!-- broad, faint wash around the ink -->\n    <feGaussianBlur in="SourceGraphic" stdDeviation="${outerStd}" result="halo"/>\n    <feComponentTransfer in="halo" result="halo">\n      <feFuncA type="linear" slope="${outerAlpha}"/>\n    </feComponentTransfer>\n    <!-- tighter, darker edge right next to each stroke -->\n    <feGaussianBlur in="SourceGraphic" stdDeviation="${innerStd}" result="edge"/>\n    <feComponentTransfer in="edge" result="edge">\n      <feFuncA type="linear" slope="${innerAlpha}"/>\n    </feComponentTransfer>\n    <feMerge>\n      <feMergeNode in="edge"/>\n      <feMergeNode in="halo"/>\n      <feMergeNode in="SourceGraphic"/>\n    </feMerge>\n  </filter>\n</defs>\n`;
+                }
                 if (parts.length > 0) {
-                    svg += `<g id="contours" data-mode="${this.currentMode}">\n${parts.join('\n')}\n</g>\n`;
+                    svg += `<g id="contours" data-mode="${this.currentMode}"${bleedEnabled ? ' filter="url(#ink-bleed)"' : ''}>\n${parts.join('\n')}\n</g>\n`;
                 }
                 svg += '</svg>';
                 return svg;
@@ -3403,7 +3429,8 @@
                 lineColor: '#1a1a1a',
                 invert: true,
                 blurRadius: 1,
-                contrast: 1.05
+                contrast: 1.05,
+                inkBleed: 0.4
             },
             'fluid': {
                 mode: 'streamlines',
@@ -3436,7 +3463,8 @@
                 threshold: 30,
                 lineColor: '#000000',
                 invert: true,
-                contrast: 1.15
+                contrast: 1.15,
+                inkBleed: 0.6
             },
             'ethereal': {
                 mode: 'contours',
@@ -3447,7 +3475,8 @@
                 invert: false,
                 contourSmoothness: 0.9,
                 detailLevel: 1.0,
-                blurRadius: 2
+                blurRadius: 2,
+                inkBleed: 0.3
             },
             'sketch': {
                 mode: 'hatch',
@@ -3568,6 +3597,12 @@
             if (preset.contrast !== undefined) {
                 document.getElementById('contrast').value = preset.contrast;
                 document.getElementById('contrastValue').textContent = preset.contrast.toFixed(2);
+            }
+
+            // Apply ink bleed params if they exist
+            if (preset.inkBleed !== undefined) {
+                document.getElementById('inkBleed').value = preset.inkBleed;
+                document.getElementById('inkBleedValue').textContent = parseFloat(preset.inkBleed).toFixed(2);
             }
 
             const presetLabel = document.getElementById('presetSelect').options[document.getElementById('presetSelect').selectedIndex].text;
@@ -3796,7 +3831,8 @@
                 // Pass optimization params too
                 simplification: presets[document.getElementById('presetSelect').value]?.simplification,
                 splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
-                optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath
+                optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath,
+                inkBleed: parseFloat(document.getElementById('inkBleed').value)
             };
 
             marchingWaves.setProgressCallback(updateProgressUI);
@@ -3891,6 +3927,10 @@
 
         document.getElementById('maxSegments').addEventListener('input', (e) => {
             document.getElementById('maxSegValue').textContent = e.target.value;
+        });
+
+        document.getElementById('inkBleed').addEventListener('input', (e) => {
+            document.getElementById('inkBleedValue').textContent = parseFloat(e.target.value).toFixed(2);
         });
 
         // Info icon tooltip handling for touch devices

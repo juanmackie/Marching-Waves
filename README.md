@@ -47,6 +47,7 @@ Marching Waves is a computational art generator. It creates contour artwork from
 - **Fine-grained controls**: you can adjust the level step, line width, threshold, smoothness, and more.
 - **Color customization**: you control the line color and anti-aliasing.
 - **Edge guidance**: contours can snap to detected image edges. This gives better line art.
+- **Ink Bleed**: a soft, two-layer bloom around the ink lines — a broad faint wash plus a tighter darker edge — simulating ink bleeding into the surface. It renders in real time on the canvas and is preserved in the exported SVG as a normal vector `<filter>`, so the file stays portable.
 
 ### Advanced characteristics
 
@@ -188,6 +189,7 @@ Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 2
 - **Detail Level**: the adaptive contour density in complex areas.
 - **Contour Smoothness**: smooths the contour paths after processing. It keeps the corners.
 - **Feature Importance**: the bias toward important image characteristics.
+- **Ink Bleed**: soft outward bloom around the lines, simulating ink bleeding into the surface. `0` = crisp lines (default). Higher values widen the halo. The bloom is drawn *behind* the sharp strokes, so hairlines stay clean. The effect is baked into the exported SVG via an SVG `<filter>`; setting it to `0` reproduces the original crisp output exactly.
 
 ### Performance settings
 
