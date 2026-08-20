@@ -50,8 +50,8 @@
       <div class="grid">
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13c4-9 8-9 12 0"/><path d="M4 13c4 9 8 9 12 0"/></svg>
-          <h3>6 generation modes</h3>
-          <p>Luminance Contours, Eikonal Contours, Flow Streamlines, Weighted Stipple, TSP Continuous Line, and Cross Hatch — each with its own artistic character.</p>
+          <h3>7 generation modes</h3>
+          <p>Luminance Contours, Eikonal Contours, Flow Streamlines, Weighted Stipple, TSP Continuous Line, Cross Hatch, and Subject Wire — each with its own artistic character.</p>
         </article>
         <article class="panel card">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/></svg>
@@ -107,6 +107,10 @@
           <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 24c5-14 24-14 28 0s-24 14-28 0z"/></svg>
           <div><h3>Cross Hatch</h3><p>Overlapping sets of parallel lines at controlled angles. Density maps to image brightness for a sketch-like appearance.</p></div>
         </article>
+        <article class="panel feat">
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 38c10-4 10-25 20-25s10 19 20 15M4 16c9 7 16 6 22-2s12 7 18 1"/></svg>
+          <div><h3>Subject Wire</h3><p>A local visual heuristic distills the focal subject, structural axis, and salient relationships into sparse black wire paths instead of tracing the background.</p></div>
+        </article>
       </div>
     </div>
   </section>
@@ -122,7 +126,7 @@
         </article>
         <article class="panel step">
           <h3>Choose your mode &amp; settings</h3>
-          <p>Pick from 6 generation modes, adjust level step, line width, adaptive settings, and style options.</p>
+          <p>Pick from 7 generation modes, adjust level step, line width, adaptive settings, and style options.</p>
         </article>
         <article class="panel step">
           <h3>Generate &amp; export</h3>
@@ -153,12 +157,13 @@
     <div class="inner">
       <h2>Frequently asked questions</h2>
       <div class="panel" style="padding:8px 28px;margin-top:24px">
-        <details open><summary>What is Marching Waves?</summary><p>A free browser-based tool that converts images into contour-based artwork using Marching Squares and the Eikonal Equation. Upload any image and choose from six distinct artistic styles.</p></details>
+        <details open><summary>What is Marching Waves?</summary><p>A free browser-based tool that converts images into contour-based artwork using Marching Squares and the Eikonal Equation. Upload any image and choose from seven distinct artistic styles.</p></details>
         <details><summary>Is it free? Do I need to sign up?</summary><p>Completely free. No registration, no installation, no data uploads to servers. Everything runs locally in your browser.</p></details>
         <details><summary>What image formats are supported?</summary><p>Any image file your browser can display — JPEG, PNG, WebP, GIF, and more. Drag and drop or click to select.</p></details>
         <details><summary>Can I export my results?</summary><p>Yes. Export as SVG for vector editing in design tools like Illustrator or Inkscape.</p></details>
         <details><summary>Does it work on mobile?</summary><p>The interface is responsive and works on mobile and tablet browsers. Processing performance depends on device capabilities.</p></details>
         <details><summary>What is the Eikonal Equation?</summary><p>It's a partial differential equation that models wavefront propagation. Marching Waves uses it to solve distance maps on images, creating smooth contour paths that follow image features.</p></details>
+        <details><summary>What is Subject Wire?</summary><p>Subject Wire runs locally in the browser. It uses saliency, connected regions, principal structure, and image flow to create sparse conceptual lines. It is intentionally heuristic, not semantic object or pose recognition.</p></details>
       </div>
     </div>
   </section>

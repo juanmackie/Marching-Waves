@@ -1,5 +1,5 @@
 // Web Worker for Marching Waves - CPU-intensive computations
-importScripts('js/engine.js');
+importScripts('js/engine.js', 'js/subject-wire.js');
 
 function postProgress(taskId, percent, message) {
     self.postMessage({ type: 'progress', taskId, percent, message, timestamp: Date.now() });
@@ -54,6 +54,7 @@ async function executeTask(taskId, method, params, options) {
         switch (method) {
             case 'solveEikonalCPU': await handleSolveEikonalCPU(taskId, params, options); break;
             case 'extractContoursAdaptive': await handleExtractContoursAdaptive(taskId, params, options); break;
+            case 'extractSubjectWire': await handleExtractSubjectWire(taskId, params, options); break;
             case 'extractStreamlines': await handleExtractStreamlines(taskId, params, options); break;
             case 'extractStipple': await handleExtractStipple(taskId, params, options); break;
             case 'extractTSP': await handleExtractTSP(taskId, params, options); break;
@@ -350,6 +351,39 @@ async function handleExtractContoursAdaptive(taskId, params, options) {
     };
 
     postResult(taskId, { contours: joined, raw: rawContours, skippedJoining: false }, perf);
+}
+
+// ============================================
+// SUBJECT WIRE EXTRACTION
+// ============================================
+async function handleExtractSubjectWire(taskId, params, options) {
+    const { grayData, gradMag, width, height } = params;
+    const t0 = performance.now();
+    const wireOptions = {
+        subjectFocus: params.subjectFocus,
+        wireDensity: params.wireDensity,
+        wireTension: params.wireTension,
+        relationshipStrength: params.relationshipStrength,
+        abstraction: params.abstraction,
+        handDrawn: params.handDrawn,
+        shouldCancel: checkCancelled
+    };
+
+    if (options.showProgress) postProgress(taskId, 64, 'Finding the focal subject...');
+    await yieldToBrowser();
+    checkCancelled();
+    if (options.showProgress) postProgress(taskId, 76, 'Tracing structural wire paths...');
+    const result = SubjectWire.generate({ grayData, gradMag, width, height, options: wireOptions });
+    checkCancelled();
+    if (options.showProgress) postProgress(taskId, 92, 'Refining the conceptual line drawing...');
+    await yieldToBrowser();
+
+    postResult(taskId, result, {
+        totalMs: performance.now() - t0,
+        method: 'Local subject-wire heuristic',
+        regions: result.meta && result.meta.regions || 0,
+        paths: result.contours.length
+    });
 }
 
 // ============================================

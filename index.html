@@ -58,6 +58,7 @@
             <option value="stipple">Weighted Stipple</option>
             <option value="tsp">TSP Art (Continuous Line)</option>
             <option value="hatch">Cross Hatch</option>
+            <option value="subject-wire">Subject Wire · Conceptual Line</option>
           </select>
         </div>
         <div class="input-group">
@@ -79,6 +80,7 @@
             <option value="ink-blot">Ink Blot</option>
             <option value="ethereal">Ethereal</option>
             <option value="sketch">Sketch (Hatch)</option>
+            <option value="subject-wire">Subject Wire</option>
           </select>
         </div>
         <div class="field">
@@ -119,6 +121,37 @@
         <div class="field">
           <div class="field-top"><label for="featureImportance">Feature Importance</label><span class="ft-right"><span class="val" id="featureImportanceValue">0.60</span></span></div>
           <input type="range" id="featureImportance" min="0" max="1" step="0.05" value="0.6">
+        </div>
+      </div>
+    </section>
+
+    <section id="secSubjectWire" style="display:none">
+      <button class="sec-head" type="button" aria-expanded="true">Subject Wire <span class="tw">▾</span></button>
+      <div class="sec-body">
+        <div class="hint" style="margin-top:4px">A local visual heuristic: it follows focal structure and pressure rather than tracing the photo. Clear subjects and strong contrast work best.</div>
+        <div class="field">
+          <div class="field-top"><label for="subjectFocus">Subject Focus</label><span class="ft-right"><span class="val" id="subjectFocusValue">0.72</span></span></div>
+          <input type="range" id="subjectFocus" min="0" max="1" step="0.05" value="0.72">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="wireDensity">Wire Density</label><span class="ft-right"><span class="val" id="wireDensityValue">0.38</span></span></div>
+          <input type="range" id="wireDensity" min="0" max="1" step="0.05" value="0.38">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="wireTension">Pressure / Tension</label><span class="ft-right"><span class="val" id="wireTensionValue">0.74</span></span></div>
+          <input type="range" id="wireTension" min="0" max="1" step="0.05" value="0.74">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="relationshipStrength">Relationship Lines</label><span class="ft-right"><span class="val" id="relationshipStrengthValue">0.58</span></span></div>
+          <input type="range" id="relationshipStrength" min="0" max="1" step="0.05" value="0.58">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="abstraction">Abstraction</label><span class="ft-right"><span class="val" id="abstractionValue">0.82</span></span></div>
+          <input type="range" id="abstraction" min="0" max="1" step="0.05" value="0.82">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="handDrawn">Hand-drawn Variation</label><span class="ft-right"><span class="val" id="handDrawnValue">0.28</span></span></div>
+          <input type="range" id="handDrawn" min="0" max="1" step="0.05" value="0.28">
         </div>
       </div>
     </section>
@@ -299,6 +332,7 @@
 </main>
     <script src="worker-pool.js"></script>
     <script src="js/engine.js"></script>
+    <script src="js/subject-wire.js"></script>
     <script src="js/gpu.js"></script>
     <script src="js/paper-bleed.js"></script>
     <script>
@@ -636,6 +670,7 @@
                 this.currentMode = 'luminance';
                 this.inkBleed = 0;
                 this.stipplePoints = null;
+                this.subjectWireMeta = null;
             }
 
             setProgressCallback(cb) {
@@ -702,6 +737,7 @@
                 this.originPoints = [];
                 this.perf = {};
                 this.stipplePoints = null;
+                this.subjectWireMeta = null;
 
                 // Clear preview data
                 if (this.livePreviewManager) {
@@ -816,6 +852,7 @@
                 const taskNames = {
                     'solveEikonalCPU': 'Eikonal Solver',
                     'extractContoursAdaptive': 'Contour Extraction',
+                    'extractSubjectWire': 'Subject Wire Analysis',
                     'extractStreamlines': 'Streamline Tracing',
                     'extractStipple': 'Stipple Generation',
                     'extractTSP': 'TSP Path Finding',
@@ -943,8 +980,9 @@
 
                 const t3 = performance.now();
 
-                if (this.currentMode === 'luminance' || this.currentMode === 'stipple' || this.currentMode === 'tsp' || this.currentMode === 'hatch') {
+                if (this.currentMode === 'luminance' || this.currentMode === 'stipple' || this.currentMode === 'tsp' || this.currentMode === 'hatch' || this.currentMode === 'subject-wire') {
                     this.solution = null;
+                    this.edgeDistance = null;
                 } else {
                     const withEdgeField = (options.edgeGuidance !== false) && this.currentMode === 'contours';
                     await this.solveEikonalAsync(width, height, threshold, showProgress, withEdgeField);
@@ -968,7 +1006,13 @@
                     height,
                     interval,
                     maxSegments,
-                    threshold: options.threshold / 100
+                    threshold: options.threshold / 100,
+                    subjectFocus: options.subjectFocus,
+                    wireDensity: options.wireDensity,
+                    wireTension: options.wireTension,
+                    relationshipStrength: options.relationshipStrength,
+                    abstraction: options.abstraction,
+                    handDrawn: options.handDrawn
                 };
 
                 const workerOptions = {
@@ -988,6 +1032,16 @@
                         joined = joined.map(p => Engine.smoothPathCornerAware(p, segs, tens, 30));
                     }
                     contourData = { contours: joined, raw, skippedJoining: false };
+                } else if (options.mode === 'subject-wire') {
+                    this.updateProgress(showProgress, 60, 'Distilling focal structure into wire paths...');
+                    const workerResult = await this.executeOnWorker('extractSubjectWire', workerParams, workerOptions);
+                    if (workerResult) {
+                        contourData = workerResult.data;
+                        this.subjectWireMeta = workerResult.data.meta || null;
+                    } else {
+                        contourData = await this.extractSubjectWire(width, height, options);
+                        this.subjectWireMeta = contourData.meta || null;
+                    }
                 } else if (options.mode === 'streamlines') {
                     const workerResult = await this.executeOnWorker('extractStreamlines', workerParams, workerOptions);
                     if (workerResult) {
@@ -1063,6 +1117,10 @@
                     'Mode': this.currentMode,
                     'Optimization': contourData.skippedJoining ? 'Skipped (too many segments)' : 'Normal'
                 };
+                if (this.currentMode === 'subject-wire' && this.subjectWireMeta) {
+                    this.perf['Heuristic Regions'] = this.subjectWireMeta.regions || 0;
+                    this.perf['Heuristic Confidence'] = `${Math.round((this.subjectWireMeta.confidence || 0) * 100)}%`;
+                }
                 if (this.gpuAvailable) {
                     const usage = gpuManager.getUsage();
                     if (usage.eikonal > 0) this.perf['GPU Eikonal'] = `${usage.eikonal.toFixed(1)}ms`;
@@ -1358,6 +1416,22 @@
             async extractContours(width, height, interval, maxSegments, skipJoining, showProgress, lineColor = '#000000', lineWidth = 1, options = {}) {
                 // Use the new adaptive contour extraction algorithm
                 return this.extractContoursAdaptive(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, options);
+            }
+
+            async extractSubjectWire(width, height, options) {
+                this.updateProgress(options.showProgress, 68, 'Finding the focal subject...');
+                await this.yieldToBrowser();
+                if (this.isCancelled) throw new Error('Cancelled by user');
+                const result = SubjectWire.generate({
+                    grayData: this.grayData,
+                    gradMag: this.gradMag,
+                    width,
+                    height,
+                    options
+                });
+                this.updateProgress(options.showProgress, 92, 'Refining the conceptual line drawing...');
+                await this.yieldToBrowser();
+                return result;
             }
 
             async extractStreamlines(width, height, options) {
@@ -3387,6 +3461,12 @@
                 detailLevel: parseFloat(document.getElementById('detailLevel').value),
                 contourSmoothness: parseFloat(document.getElementById('contourSmoothness').value),
                 featureImportance: parseFloat(document.getElementById('featureImportance').value),
+                subjectFocus: parseFloat(document.getElementById('subjectFocus').value),
+                wireDensity: parseFloat(document.getElementById('wireDensity').value),
+                wireTension: parseFloat(document.getElementById('wireTension').value),
+                relationshipStrength: parseFloat(document.getElementById('relationshipStrength').value),
+                abstraction: parseFloat(document.getElementById('abstraction').value),
+                handDrawn: parseFloat(document.getElementById('handDrawn').value),
                 // Pass optimization params too
                 simplification: presets[document.getElementById('presetSelect').value]?.simplification,
                 splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
@@ -3410,7 +3490,7 @@
                 isProcessing = false;
                 generateBtn.disabled = false;
                 rerunBtn.disabled = false;
-                selectionBtn.style.display = 'block';
+                selectionBtn.style.display = options.mode === 'subject-wire' ? 'none' : 'block';
                 selectionBtn.textContent = 'Select Area to Rerun';
                 selectionBtn.classList.add('btn-secondary');
                 selectionBtn.classList.remove('btn-primary');
@@ -3421,6 +3501,24 @@
         });
 
         const presets = {
+            'subject-wire': {
+                mode: 'subject-wire',
+                interval: 8,
+                lineWidth: 0.7,
+                threshold: 50,
+                lineColor: '#050505',
+                invert: false,
+                blurRadius: 1,
+                contrast: 1.1,
+                contourSmoothness: 0.75,
+                subjectFocus: 0.72,
+                wireDensity: 0.38,
+                wireTension: 0.74,
+                relationshipStrength: 0.58,
+                abstraction: 0.82,
+                handDrawn: 0.28,
+                inkBleed: 0
+            },
             'natural-contours': {
                 mode: 'luminance',
                 interval: 12,
@@ -3589,6 +3687,22 @@
                 document.getElementById('featureImportanceValue').textContent = preset.featureImportance.toFixed(2);
             }
 
+            // Apply Subject Wire params if they exist
+            const subjectFields = [
+                ['subjectFocus', 'subjectFocusValue'],
+                ['wireDensity', 'wireDensityValue'],
+                ['wireTension', 'wireTensionValue'],
+                ['relationshipStrength', 'relationshipStrengthValue'],
+                ['abstraction', 'abstractionValue'],
+                ['handDrawn', 'handDrawnValue']
+            ];
+            subjectFields.forEach(([field, value]) => {
+                if (preset[field] !== undefined) {
+                    document.getElementById(field).value = preset[field];
+                    document.getElementById(value).textContent = parseFloat(preset[field]).toFixed(2);
+                }
+            });
+
             // Apply preprocess params if they exist
             if (preset.blurRadius !== undefined) {
                 document.getElementById('blurRadius').value = preset.blurRadius;
@@ -3619,6 +3733,7 @@
         document.getElementById('modeSelect').addEventListener('change', (e) => {
             const mode = e.target.value;
             const hasAdvanced = mode === 'contours' || mode === 'streamlines';
+            const hasSubjectWire = mode === 'subject-wire';
             
             const intervalLabel = document.querySelector('#secParams .field-top:first-of-type label');
             if (intervalLabel) {
@@ -3628,6 +3743,12 @@
             }
             
             document.getElementById('secAdaptive').style.display = mode === 'contours' ? 'block' : 'none';
+            document.getElementById('secSubjectWire').style.display = hasSubjectWire ? 'block' : 'none';
+            selectionBtn.style.display = hasSubjectWire ? 'none' : 'block';
+            if (hasSubjectWire) {
+                selectionManager.disable();
+                rerunBtn.style.display = 'none';
+            }
             const maxField = document.getElementById('maxSegments').closest('.field');
             const skipGroup = document.getElementById('skipJoining').closest('.checkbox-group');
             if (maxField) maxField.style.display = hasAdvanced ? 'block' : 'none';
@@ -3778,6 +3899,12 @@
             document.getElementById('featureImportanceValue').textContent = parseFloat(e.target.value).toFixed(2);
         });
 
+        ['subjectFocus', 'wireDensity', 'wireTension', 'relationshipStrength', 'abstraction', 'handDrawn'].forEach((id) => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                document.getElementById(id + 'Value').textContent = parseFloat(e.target.value).toFixed(2);
+            });
+        });
+
         document.getElementById('showPerf').addEventListener('change', (e) => {
             perfStats.classList.toggle('visible', e.target.checked);
         });
@@ -3828,6 +3955,12 @@
                 detailLevel: parseFloat(document.getElementById('detailLevel').value),
                 contourSmoothness: parseFloat(document.getElementById('contourSmoothness').value),
                 featureImportance: parseFloat(document.getElementById('featureImportance').value),
+                subjectFocus: parseFloat(document.getElementById('subjectFocus').value),
+                wireDensity: parseFloat(document.getElementById('wireDensity').value),
+                wireTension: parseFloat(document.getElementById('wireTension').value),
+                relationshipStrength: parseFloat(document.getElementById('relationshipStrength').value),
+                abstraction: parseFloat(document.getElementById('abstraction').value),
+                handDrawn: parseFloat(document.getElementById('handDrawn').value),
                 // Pass optimization params too
                 simplification: presets[document.getElementById('presetSelect').value]?.simplification,
                 splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
@@ -3842,7 +3975,7 @@
 
                 dropPreview.style.display = 'none';
                 canvasContainer.style.display = 'flex';
-                selectionBtn.style.display = 'block'; // Show after generation
+                selectionBtn.style.display = options.mode === 'subject-wire' ? 'none' : 'block'; // Subject Wire is global; no region rerun
                 
                 if (!debugMode.checked || options.vizMode === 'final') {
                     exportBtn.disabled = false;

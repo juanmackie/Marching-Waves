@@ -4,7 +4,7 @@ DEMO LINK: https://juanmackie.github.io/Marching-Waves/
 
 **Create contour artwork from images**
 
-Marching Waves is a computational art generator. It creates contour artwork from images. It uses Marching Squares over luminance fields or distance fields. It computes the distance fields with the Eikonal equation (the Fast Marching Method). It supports many artistic modes: contours, streamlines, stipple, TSP continuous line, and cross hatch.
+Marching Waves is a computational art generator. It creates contour artwork from images. It uses Marching Squares over luminance fields or distance fields. It computes the distance fields with the Eikonal equation (the Fast Marching Method). It supports seven artistic modes: contours, streamlines, stipple, TSP continuous line, cross hatch, and Subject Wire.
 
 ## Characteristics
 
@@ -18,6 +18,7 @@ Marching Waves is a computational art generator. It creates contour artwork from
 - **Stipple**: weighted stipple patterns from Poisson disk sampling.
 - **TSP Art**: continuous line art from the Traveling Salesman Problem.
 - **Cross Hatch**: layered hatch patterns that represent tones.
+- **Subject Wire**: a local saliency-and-flow heuristic that distills a focal subject into sparse, open, hand-drawn wire paths without copying the background.
 
 ### Performance and technology
 
@@ -42,8 +43,9 @@ Marching Waves is a computational art generator. It creates contour artwork from
 
 ### Artistic controls
 
-- **Many modes**: Luminance Contours, Eikonal Contours, Streamlines, Stipple, TSP Art, and Cross Hatch.
-- **Preset library**: pre-configured styles. Examples: Natural Contours, Topographic Map, Blueprint, Flowing Silk, Marble Flow, Ink Stipple, Tangled String, Fluid, Cyberpunk, Ink Blot, Ethereal, and Sketch.
+- **Many modes**: Luminance Contours, Eikonal Contours, Streamlines, Stipple, TSP Art, Cross Hatch, and Subject Wire.
+- **Subject Wire controls**: tune subject focus, wire density, pressure/tension, relationship lines, abstraction, and hand-drawn variation. This mode is heuristic rather than semantic object or pose recognition.
+- **Preset library**: pre-configured styles. Examples: Natural Contours, Topographic Map, Blueprint, Flowing Silk, Marble Flow, Ink Stipple, Tangled String, Fluid, Cyberpunk, Ink Blot, Ethereal, Sketch, and Subject Wire.
 - **Fine-grained controls**: you can adjust the level step, line width, threshold, smoothness, and more.
 - **Color customization**: you control the line color and anti-aliasing.
 - **Edge guidance**: contours can snap to detected image edges. This gives better line art.
@@ -62,10 +64,10 @@ Marching Waves is a computational art generator. It creates contour artwork from
 1. **Image input**: load an image (JPEG, PNG, etc.) or use the sample pattern generator.
 2. **Preprocessing**: the application converts the image to grayscale. It applies inversion if necessary.
 3. **Field computation**: it uses the image luminance directly (default). Or it solves the Eikonal equation to create a distance field.
-4. **Contour extraction**: it uses Marching Squares to extract contour lines at the intervals you set.
-5. **Adaptive enhancement**: it applies edge guidance, smoothness, and detail controls (Eikonal mode).
-6. **Path optimization**: it joins and optimizes the contour segments for clean output.
-7. **Rendering**: it draws the final artwork on the canvas. It also gives SVG export.
+4. **Extraction**: it uses Marching Squares for contour modes, or a local saliency/force-field pass for Subject Wire.
+5. **Adaptive enhancement**: it applies edge guidance, smoothness, detail, and subject-wire abstraction controls.
+6. **Path optimization**: it joins, simplifies, and smooths the paths for clean output.
+7. **Rendering**: it draws the final artwork on the canvas and provides SVG export.
 
 ## Quick start
 
@@ -177,7 +179,7 @@ Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 2
 
 ### Parameter guide
 
-- **Mode**: choose the algorithm that creates the artwork (Contours, Streamlines, Stipple, TSP, Hatch).
+- **Mode**: choose the algorithm that creates the artwork (Contours, Streamlines, Stipple, TSP, Hatch, or Subject Wire).
 - **Preset**: apply pre-configured settings for different artistic styles.
 - **Contour Interval**: spacing between contour lines (lower = denser).
 - **Line Width**: thickness of the drawn lines.
@@ -189,6 +191,12 @@ Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 2
 - **Detail Level**: the adaptive contour density in complex areas.
 - **Contour Smoothness**: smooths the contour paths after processing. It keeps the corners.
 - **Feature Importance**: the bias toward important image characteristics.
+- **Subject Focus**: how selectively Subject Wire isolates the dominant focal region.
+- **Wire Density**: the number of long structural lines.
+- **Pressure / Tension**: how strongly paths pull toward and tighten around salient structure.
+- **Relationship Lines**: how many nearby salient regions are connected.
+- **Abstraction**: how aggressively detail is compressed into symbolic movement.
+- **Hand-drawn Variation**: deterministic small irregularities that keep the strokes organic.
 - **Ink Bleed**: soft outward bloom around the lines, simulating ink bleeding into the surface. `0` = crisp lines (default). Higher values widen the halo. The bloom is drawn *behind* the sharp strokes, so hairlines stay clean. The effect is baked into the exported SVG via an SVG `<filter>`; setting it to `0` reproduces the original crisp output exactly.
 
 ### Performance settings
