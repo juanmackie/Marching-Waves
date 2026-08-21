@@ -1,0 +1,27 @@
+{
+  "skill": "autoresearch",
+  "mode": "classic",
+  "subcommand": "autoresearch",
+  "repo": "Marching-Waves",
+  "goal": "Runtime, WebGPU/CPU speed, contour quality, output similarity",
+  "finished": "2026-08-21T12:14:30Z",
+  "iterations_planned": 12,
+  "iterations_run": 7,
+  "stop_reason": "PLATEAU: eikonal (dominant stage) near JS floor; all other stages <8ms; further micro-opts marginal vs contention noise",
+  "baseline": { "total_ms": 154.32, "eikonal_ms": 139.32, "output": "snapshot created at iter 0" },
+  "best": { "total_ms": 26.41, "eikonal_ms": 16.02, "speedup": "5.8x total (A/B isolated eikonal: 3.5x under load)", "output": "byte-identical to baseline (JSON.stringify equal, coordSumDelta=0)" },
+  "kept_changes": [
+    "typed-array min-heap in solveEikonalFMM (no object allocs, pre-sized, sift-free init)",
+    "direct stencil reads replacing safeGet/Math.min.apply temp arrays",
+    "sobelGradientCPU row-cached clamping",
+    "generateAdaptiveLevelsGrad monotonic quantile walk (O(BINS+targetCount))",
+    "marchSquaresField inline edge coords (no per-cell array/closure)",
+    "joinSegments by-reference flatten + push/reverse backward chaining",
+    "smoothPathCornerAware valid-point fast path"
+  ],
+  "discarded": [],
+  "verification": "benchmarks/harness.js (median-of-7, determinism + 5% snapshot tolerance) + benchmarks/ab.js (interleaved A/B vs git HEAD, byte-identical output check)",
+  "notes": "WebGPU path (js/gpu.js) requires a browser device; out of scope headless. worker.js imports engine.js so all CPU gains apply to workers automatically.",
+  "files_changed": ["js/engine.js"],
+  "files_added": ["benchmarks/harness.js", "benchmarks/ab.js", "benchmarks/snapshot.json", "autoresearch/"]
+}

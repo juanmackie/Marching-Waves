@@ -1,0 +1,9 @@
+iter	change	runtime_ms	eikonal_ms	levels_ms	march_ms	join_ms	paths	loops	total_len	checksum_delta	snapshot	kept
+0	baseline (harness fixed: main-realm eval; engine untouched)	-	-	-	-	-	-	-	1205.26	0	created	BASELINE
+1	typed-array heap in solveEikonalFMM, no per-neighbor allocs	52.69	24.25	10.78	13.25	4.41	5	1	1205.26	0	within-tolerance(0)	KEEP
+2	sobelGradientCPU row-cache + adaptive-levels monotonic quantile walk	35.20	21.42	8.17	3.88	1.73	5	1	1205.26	0	within-tolerance(0)	KEEP
+3	pre-size eikonal heap to worst case (no growth copies); added A/B bench	27.41(A/B med)	-	-	-	-	5	1	1205.26	0	identical	KEEP
+4	eikonal init fills heap directly (all-zero sources need no sift)	24.66(A/B med)	-	-	-	-	5	1	1205.26	0	identical	KEEP
+5	marchSquaresField: inline edge coords, drop per-cell edges array + closure	23.08(eik)	8.96	8.93	3.99	5	1	1205.26	0	identical	KEEP
+6	joinSegments: pass segments by reference, backward chain push+reverse vs unshift	34.38	18.84	7.97	4.84	2.73	5	1	1205.26	0	identical	KEEP
+7	smoothPathCornerAware fast path skips filter allocation	26.41	16.02	6.05	2.97	1.37	5	1	1205.26	0	identical	KEEP

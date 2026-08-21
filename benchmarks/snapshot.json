@@ -1,0 +1,21 @@
+{
+  "created": "2026-08-21T11:51:46.647Z",
+  "quality": {
+    "pathCount": 5,
+    "points": 258,
+    "closedLoops": 1,
+    "totalLength": 1205.26,
+    "badCoords": false,
+    "coordSum": 147903.239
+  },
+  "params": {
+    "threshold": 0.5,
+    "interval": 6,
+    "detailLevel": 0.7,
+    "featureImportance": 0.6,
+    "epsilon": 0.8,
+    "smoothness": 0.5
+  },
+  "width": 480,
+  "height": 360
+}

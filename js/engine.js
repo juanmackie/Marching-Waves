@@ -26,34 +26,28 @@ var Engine = (function () {
                     var tL = interp(v00, v01, level);
                     var tR = interp(v10, v11, level);
 
-                    var edges = [
-                        { x: x + tT, y: y },      // 0 top
-                        { x: x + 1, y: y + tR },   // 1 right
-                        { x: x + tB, y: y + 1 },   // 2 bottom
-                        { x: x, y: y + tL }        // 3 left
-                    ];
-
-                    var push = function (a, b) {
-                        if (a === undefined || b === undefined) return;
-                        lines.push({ x1: edges[a].x, y1: edges[a].y, x2: edges[b].x, y2: edges[b].y });
-                    };
+                    // Edge coordinates inlined (no edges array / push closure):
+                    // 0 top:    (x + tT, y)        1 right: (x + 1, y + tR)
+                    // 2 bottom: (x + tB, y + 1)    3 left:  (x, y + tL)
 
                     var avg = (v00 + v10 + v01 + v11) / 4;
                     switch (code) {
-                        case 1:  push(0, 3); break;
-                        case 2:  push(0, 1); break;
-                        case 3:  push(1, 3); break;
-                        case 4:  push(2, 3); break;
-                        case 5:  push(0, 2); break;
-                        case 6:  avg >= level ? (push(0, 3), push(2, 1)) : (push(0, 1), push(2, 3)); break;
-                        case 7:  push(1, 2); break;
-                        case 8:  push(2, 1); break;
-                        case 9:  avg >= level ? (push(0, 1), push(2, 3)) : (push(0, 3), push(2, 1)); break;
-                        case 10: push(0, 2); break;
-                        case 11: push(2, 3); break;
-                        case 12: push(1, 3); break;
-                        case 13: push(0, 1); break;
-                        case 14: push(0, 3); break;
+                        case 1:  lines.push({ x1: x + tT, y1: y, x2: x, y2: y + tL }); break;
+                        case 2:  lines.push({ x1: x + tT, y1: y, x2: x + 1, y2: y + tR }); break;
+                        case 3:  lines.push({ x1: x + 1, y1: y + tR, x2: x, y2: y + tL }); break;
+                        case 4:  lines.push({ x1: x + tB, y1: y + 1, x2: x, y2: y + tL }); break;
+                        case 5:  lines.push({ x1: x + tT, y1: y, x2: x + tB, y2: y + 1 }); break;
+                        case 6:  avg >= level ? (lines.push({ x1: x + tT, y1: y, x2: x, y2: y + tL }), lines.push({ x1: x + tB, y1: y + 1, x2: x + 1, y2: y + tR }))
+                                              : (lines.push({ x1: x + tT, y1: y, x2: x + 1, y2: y + tR }), lines.push({ x1: x + tB, y1: y + 1, x2: x, y2: y + tL })); break;
+                        case 7:  lines.push({ x1: x + 1, y1: y + tR, x2: x + tB, y2: y + 1 }); break;
+                        case 8:  lines.push({ x1: x + tB, y1: y + 1, x2: x + 1, y2: y + tR }); break;
+                        case 9:  avg >= level ? (lines.push({ x1: x + tT, y1: y, x2: x + 1, y2: y + tR }), lines.push({ x1: x + tB, y1: y + 1, x2: x, y2: y + tL }))
+                                              : (lines.push({ x1: x + tT, y1: y, x2: x, y2: y + tL }), lines.push({ x1: x + tB, y1: y + 1, x2: x + 1, y2: y + tR })); break;
+                        case 10: lines.push({ x1: x + tT, y1: y, x2: x + tB, y2: y + 1 }); break;
+                        case 11: lines.push({ x1: x + tB, y1: y + 1, x2: x, y2: y + tL }); break;
+                        case 12: lines.push({ x1: x + 1, y1: y + tR, x2: x, y2: y + tL }); break;
+                        case 13: lines.push({ x1: x + tT, y1: y, x2: x + 1, y2: y + tR }); break;
+                        case 14: lines.push({ x1: x + tT, y1: y, x2: x, y2: y + tL }); break;
                     }
                 }
             }
@@ -65,12 +59,11 @@ var Engine = (function () {
     // ─── Segment joining via quantized hash chaining (O(n)) ───
     function joinSegments(rawContours) {
         var all = [];
-        // flatten all segments
+        // flatten all segments (by reference — segments are read-only here)
         for (var ci = 0; ci < rawContours.length; ci++) {
             var lines = rawContours[ci].lines;
             for (var si = 0; si < lines.length; si++) {
-                var l = lines[si];
-                all.push({ x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2 });
+                all.push(lines[si]);
             }
         }
         if (all.length === 0) return [];
@@ -134,15 +127,21 @@ var Engine = (function () {
                 used[match.idx] = 1;
             }
 
-            // chain backward from start
+            // chain backward from start (collect with push, reverse once —
+            // same order as repeated unshift without the O(n^2))
             cx = seg.x1; cy = seg.y1;
+            var pre = [];
             while (true) {
-                var match = findMatch(cx, cy);
-                if (!match) break;
-                var ms = all[match.idx];
-                if (match.end === 0) { path.unshift({ x: ms.x2, y: ms.y2 }); cx = ms.x2; cy = ms.y2; }
-                else { path.unshift({ x: ms.x1, y: ms.y1 }); cx = ms.x1; cy = ms.y1; }
-                used[match.idx] = 1;
+                var matchB = findMatch(cx, cy);
+                if (!matchB) break;
+                var msB = all[matchB.idx];
+                if (matchB.end === 0) { pre.push({ x: msB.x2, y: msB.y2 }); cx = msB.x2; cy = msB.y2; }
+                else { pre.push({ x: msB.x1, y: msB.y1 }); cx = msB.x1; cy = msB.y1; }
+                used[matchB.idx] = 1;
+            }
+            if (pre.length > 0) {
+                pre.reverse();
+                path = pre.concat(path);
             }
 
             if (path.length > 1) paths.push(path);
@@ -243,76 +242,85 @@ var Engine = (function () {
         var solution = new Float32Array(size);
         solution.fill(Infinity);
         var visited = new Uint8Array(size);
-        var heap = [];
-        var idx = function (x, y) { return y * width + x; };
 
-        // init
-        for (var y = 0; y < height; y++) {
-            for (var x = 0; x < width; x++) {
-                var i = idx(x, y);
-                if (grayData[i] < threshold) {
-                    solution[i] = 0; visited[i] = 1;
-                    heap.push({ x: x, y: y, value: 0 });
+        // Flat binary min-heap: parallel value/index arrays instead of {x,y,value}
+        // objects (no per-entry allocation, cache-friendly sift). Pre-sized to the
+        // worst case (every pixel queued once) so no growth copies occur.
+        var cap = size + 1, hn = 0;
+        var hv = new Float64Array(cap);
+        var hi = new Int32Array(cap);
+        function hpush(v, ix) {
+            if (hn === cap) {
+                var ncap = cap << 1;
+                var nv = new Float64Array(ncap); nv.set(hv); hv = nv;
+                var ni = new Int32Array(ncap); ni.set(hi); hi = ni;
+                cap = ncap;
+            }
+            var j = hn++;
+            hv[j] = v; hi[j] = ix;
+            while (j > 0) {
+                var pp = (j - 1) >> 1;
+                if (hv[pp] <= hv[j]) break;
+                var tv = hv[pp]; hv[pp] = hv[j]; hv[j] = tv;
+                var ti = hi[pp]; hi[pp] = hi[j]; hi[j] = ti;
+                j = pp;
+            }
+        }
+        function hpop() {
+            var top = hi[0];
+            hn--;
+            if (hn > 0) {
+                hv[0] = hv[hn]; hi[0] = hi[hn];
+                var j = 0, l, r, s;
+                while (true) {
+                    l = (j << 1) + 1; r = l + 1; s = j;
+                    if (l < hn && hv[l] < hv[s]) s = l;
+                    if (r < hn && hv[r] < hv[s]) s = r;
+                    if (s === j) break;
+                    var tv2 = hv[j]; hv[j] = hv[s]; hv[s] = tv2;
+                    var ti2 = hi[j]; hi[j] = hi[s]; hi[s] = ti2;
+                    j = s;
+                }
+            }
+            return top;
+        }
+
+        var w = width, h = height;
+        // init — all sources have value 0, so the heap invariant (parent <= child)
+        // holds without any sifting; fill slots directly.
+        for (var y0 = 0; y0 < h; y0++) {
+            var row0 = y0 * w;
+            for (var x0 = 0; x0 < w; x0++) {
+                var i0 = row0 + x0;
+                if (grayData[i0] < threshold) {
+                    solution[i0] = 0; visited[i0] = 1;
+                    hv[hn] = 0; hi[hn] = i0; hn++;
                 }
             }
         }
-        // heap helpers
-        var heapPush = function (item) {
-            heap.push(item);
-            var i = heap.length - 1, p;
-            while (i > 0) {
-                p = (i - 1) >> 1;
-                if (heap[p].value <= heap[i].value) break;
-                var tmp = heap[p]; heap[p] = heap[i]; heap[i] = tmp;
-                i = p;
-            }
-        };
-        var heapPop = function () {
-            if (heap.length === 0) return null;
-            var result = heap[0], last = heap.pop();
-            if (heap.length > 0) {
-                heap[0] = last;
-                var i = 0, len = heap.length, smallest, left, right;
-                while (true) {
-                    left = (i << 1) + 1; right = left + 1; smallest = i;
-                    if (left < len && heap[left].value < heap[smallest].value) smallest = left;
-                    if (right < len && heap[right].value < heap[smallest].value) smallest = right;
-                    if (smallest === i) break;
-                    var tmp = heap[i]; heap[i] = heap[smallest]; heap[smallest] = tmp;
-                    i = smallest;
-                }
-            }
-            return result;
-        };
 
-        var safeGet = function (x, y) {
-            if (x < 0 || x >= width || y < 0 || y >= height) return Infinity;
-            var v = solution[idx(x, y)];
-            return (v === undefined || isNaN(v) || !isFinite(v)) ? Infinity : v;
-        };
+        while (hn > 0) {
+            var cIdx = hpop();
+            var cx = cIdx % w, cy = (cIdx - cx) / w;
+            visited[cIdx] = 1;
 
-        while (heap.length > 0) {
-            var cur = heapPop();
-            if (!cur) break;
-            var x = cur.x, y = cur.y;
-            visited[idx(x, y)] = 1;
-
-            var n = [{ x: x - 1, y: y }, { x: x + 1, y: y }, { x: x, y: y - 1 }, { x: x, y: y + 1 }];
-            for (var ni = 0; ni < n.length; ni++) {
-                var nx = n[ni].x, ny = n[ni].y;
-                if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-                var nIdx = idx(nx, ny);
+            // Upwind stencil around the popped cell — recomputed per neighbor
+            // (same as original) since an earlier neighbor update in this same
+            // pop can change what later stencil reads see.
+            for (var d = 0; d < 4; d++) {
+                var nx = cx + (d === 0 ? -1 : d === 1 ? 1 : 0);
+                var ny = cy + (d === 2 ? -1 : d === 3 ? 1 : 0);
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                var nIdx = ny * w + nx;
                 if (visited[nIdx]) continue;
 
-                var ux = safeGet(x - 1, y), uy = safeGet(x, y - 1), ux_next = safeGet(x + 1, y), uy_next = safeGet(x, y + 1);
-                var xs = [], ys = [];
-                if (ux < Infinity) xs.push(ux);
-                if (ux_next < Infinity) xs.push(ux_next);
-                if (uy < Infinity) ys.push(uy);
-                if (uy_next < Infinity) ys.push(uy_next);
+                var ux  = (cx > 0)     ? solution[cIdx - 1] : Infinity;
+                var ux2 = (cx < w - 1) ? solution[cIdx + 1] : Infinity;
+                var uy  = (cy > 0)     ? solution[cIdx - w] : Infinity;
+                var uy2 = (cy < h - 1) ? solution[cIdx + w] : Infinity;
+                var minX = ux < ux2 ? ux : ux2;
+                var minY = uy < uy2 ? uy : uy2;
 
-                var minX = xs.length > 0 ? Math.min.apply(null, xs) : Infinity;
-                var minY = ys.length > 0 ? Math.min.apply(null, ys) : Infinity;
                 var fVal = grayData[nIdx];
                 var newValue;
 
@@ -320,13 +328,13 @@ var Engine = (function () {
                 if (minX === Infinity) newValue = minY + fVal;
                 else if (minY === Infinity) newValue = minX + fVal;
                 else {
-                    var m = Math.min(minX, minY), o = Math.max(minX, minY);
+                    var m = minX < minY ? minX : minY, o = minX < minY ? minY : minX;
                     if (o - m >= fVal) newValue = m + fVal;
                     else { var disc = 2 * fVal * fVal - (o - m) * (o - m); newValue = disc < 0 ? m + fVal : (m + o + Math.sqrt(disc)) / 2; }
                 }
                 if (newValue < solution[nIdx]) {
                     solution[nIdx] = newValue;
-                    heapPush({ x: nx, y: ny, value: newValue });
+                    hpush(newValue, nIdx);
                 }
             }
         }
@@ -453,13 +461,17 @@ var Engine = (function () {
         var targetCount = Math.max(4, Math.min(300, Math.round(range / Math.max(0.5, interval * 0.85))));
         var minGap = (range / targetCount) * 0.22;
         var prev = -Infinity;
+        // One cumulative pass over bins; each quantile then walks forward from
+        // the previous quantile's bin (monotonic) instead of rescanning all bins.
+        var b = 0, accC = 0;
         for (var k = 1; k < targetCount; k++) {
             var q = k / targetCount;
-            var acc = 0, t = BINS - 1;
-            for (var b = 0; b < BINS; b++) {
-                acc += hist[b];
-                if (acc >= total * q) { t = b; break; }
+            var targetAcc = total * q;
+            while (b < BINS && accC < targetAcc) {
+                accC += hist[b];
+                b++;
             }
+            var t = b < BINS ? b - 1 : BINS - 1;
             var level = min + (t / (BINS - 1)) * range;
             if (level - prev >= minGap && level > min && level < max) {
                 levels.push(level);
@@ -512,7 +524,15 @@ var Engine = (function () {
     // only to the gentle stretches, preserving crisp features for plotting.
     function smoothPathCornerAware(points, segments, tension, cornerAngle) {
         if (!points || points.length < 3) return points || [];
-        var valid = points.filter(function (p) { return p && p.x !== undefined && p.y !== undefined; });
+        // Fast path: skip the filter allocation when all points are valid (common)
+        var valid = points, allValid = true;
+        for (var vi = 0; vi < points.length; vi++) {
+            var pv = points[vi];
+            if (!pv || pv.x === undefined || pv.y === undefined) { allValid = false; break; }
+        }
+        if (!allValid) {
+            valid = points.filter(function (p) { return p && p.x !== undefined && p.y !== undefined; });
+        }
         if (valid.length < 3) return valid;
         segments = segments || 4;
         tension = (tension == null) ? 0.5 : tension;
@@ -593,19 +613,23 @@ var Engine = (function () {
     }
 
     // Sobel gradient (CPU) → { gradX, gradY, gradMag }
+    // Row-cached: hoists clamped row bases and interior-column fast path out of
+    // the hot loop (identical math, border handled by the same clamp logic).
     function sobelGradientCPU(gray, width, height) {
         var n = width * height;
         var gradX = new Float32Array(n);
         var gradY = new Float32Array(n);
         var gradMag = new Float32Array(n);
         for (var y = 0; y < height; y++) {
+            var ym = (y > 0 ? y - 1 : 0) * width;
+            var yr = y * width;
+            var yp = (y < height - 1 ? y + 1 : height - 1) * width;
             for (var x = 0; x < width; x++) {
-                var i = y * width + x;
-                var xm = Math.max(0, x - 1), xp = Math.min(width - 1, x + 1);
-                var ym = Math.max(0, y - 1), yp = Math.min(height - 1, y + 1);
-                var tl = gray[ym * width + xm], tc = gray[ym * width + x], tr = gray[ym * width + xp];
-                var ml = gray[y * width + xm], mr = gray[y * width + xp];
-                var bl = gray[yp * width + xm], bc = gray[yp * width + x], br = gray[yp * width + xp];
+                var i = yr + x;
+                var xm = x > 0 ? x - 1 : 0, xp = x < width - 1 ? x + 1 : width - 1;
+                var tl = gray[ym + xm], tc = gray[ym + x], tr = gray[ym + xp];
+                var ml = gray[yr + xm], mr = gray[yr + xp];
+                var bl = gray[yp + xm], bc = gray[yp + x], br = gray[yp + xp];
                 var gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
                 var gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);
                 gradX[i] = gx;
