@@ -147,20 +147,8 @@ class WorkerPool {
         // Extract onProgress callback and create clean options for worker
         const { onProgress, onWavefront, ...optionsWithoutCallback } = options;
         
-        // Debug: deep scan for functions
-        function scan(obj, path) {
-            if (!obj || typeof obj !== 'object') return;
-            for (const k of Object.keys(obj)) {
-                const v = obj[k];
-                if (typeof v === 'function') console.error('FOUND-FN in msg.' + path + '.' + k);
-                else if (typeof v === 'object' && !ArrayBuffer.isView(v) && !(v instanceof ArrayBuffer)) scan(v, path + '.' + k);
-            }
-        }
-        const msgToSend = { type: 'execute', taskId, method, params, options: optionsWithoutCallback };
-        scan(msgToSend, '');
-        
         // Send task to worker
-        worker.postMessage(msgToSend);
+        worker.postMessage({ type: 'execute', taskId, method, params, options: optionsWithoutCallback });
         
         return promise;
     }

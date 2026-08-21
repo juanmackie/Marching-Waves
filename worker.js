@@ -36,7 +36,7 @@ self.onmessage = function(e) {
     if (type === 'pause') { isPaused = true; return; }
     if (type === 'resume') { isPaused = false; if (pauseResolve) { pauseResolve(); pauseResolve = null; } return; }
     if (type === 'cleanup') { cleanupWorkerMemory(); return; }
-    if (type === 'visibility') { isVisible = e.data.isVisible; batchSize = isVisible ? 1000 : 4000; return; }
+    if (type === 'visibility') { isVisible = e.data.isVisible; return; }
 
     // Regular task execution
     isCancelled = false;
