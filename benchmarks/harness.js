@@ -89,10 +89,22 @@ function totalLength(paths) {
 }
 
 // ── Pipeline stages ─────────────────────────────────────────────────────────
-function runPipeline(gray, width, height, params) {
+function runPipeline(gray0, width, height, params) {
     const t = {};
     let t0 = performance.now();
 
+    // Stage 0: field generation — synthetic RGBA -> luminance + blur (as in app)
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i++) {
+        const g = Math.round(gray0[i] * 255);
+        rgba[i * 4] = g; rgba[i * 4 + 1] = g; rgba[i * 4 + 2] = g; rgba[i * 4 + 3] = 255;
+    }
+    const gray = Engine.preprocessCPU(
+        { data: rgba, width, height },
+        { blurRadius: params.blurRadius, contrast: params.contrast });
+    t.preprocess = performance.now() - t0;
+
+    t0 = performance.now();
     // Stage 1: Eikonal distance field (CPU FMM)
     const solution = Engine.solveEikonalFMM(gray, width, height, params.threshold);
     t.eikonal = performance.now() - t0;
@@ -112,8 +124,20 @@ function runPipeline(gray, width, height, params) {
     t.levels = performance.now() - t0;
 
     t0 = performance.now();
+    // Stage 2b: edge guidance pre-pass (default-on in worker):
+    // chamfer distance to strong-gradient pixels, then warp field toward edges.
+    let field = solution;
+    if (params.edgeGuidance) {
+        const mask = new Uint8Array(width * height);
+        for (let i = 0; i < mask.length; i++) mask[i] = grad.gradMag[i] > params.edgeMaskThreshold ? 1 : 0;
+        const edgeDistance = Engine.distanceTransformChamfer(mask, width, height);
+        field = Engine.applyEdgeWarp(solution, edgeDistance, width, height, params.edgeSensitivity);
+    }
+    t.edgeWarp = performance.now() - t0;
+
+    t0 = performance.now();
     // Stage 3: marching squares contour extraction
-    const rawContours = Engine.marchSquaresField(solution, width, height, levels);
+    const rawContours = Engine.marchSquaresField(field, width, height, levels);
     t.march = performance.now() - t0;
 
     t0 = performance.now();
@@ -130,11 +154,13 @@ function runPipeline(gray, width, height, params) {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 const PARAMS = {
-    threshold: 0.5, interval: 6, detailLevel: 0.7,
-    featureImportance: 0.6, epsilon: 0.8, smoothness: 0.5
+    threshold: 0.5, interval: 3, detailLevel: 0.8,
+    featureImportance: 0.6, epsilon: 0.8, smoothness: 0.5,
+    blurRadius: 2, contrast: 1.15, edgeGuidance: true,
+    edgeSensitivity: 0.6, edgeMaskThreshold: 0.35
 };
-const WIDTH = 480, HEIGHT = 360;
-const RUNS = 7; // timed runs; report median (machine may be under contention)
+const WIDTH = 800, HEIGHT = 600;
+const RUNS = 5; // timed runs; report best (machine may be under contention)
 
 function median(a) { const s = [...a].sort((x, y) => x - y); return s[(s.length - 1) >> 1]; }
 
@@ -192,8 +218,10 @@ function main() {
     const result = {
         runtime_ms: {
             total: Number(best.totalMs.toFixed(2)),
+            preprocess: Number(best.timings.preprocess.toFixed(2)),
             eikonal: Number(best.timings.eikonal.toFixed(2)),
             levels: Number(best.timings.levels.toFixed(2)),
+            edgeWarp: Number(best.timings.edgeWarp.toFixed(2)),
             march: Number(best.timings.march.toFixed(2)),
             joinSimplifySmooth: Number(best.timings.joinSimplifySmooth.toFixed(2))
         },
@@ -217,7 +245,7 @@ function main() {
         console.log('=== Marching-Waves CPU benchmark ===');
         console.log(`image: ${WIDTH}x${HEIGHT} synthetic, ${RUNS} timed runs (best shown)`);
         console.log(`runtime : ${result.runtime_ms.total} ms total`);
-        console.log(`  eikonal=${result.runtime_ms.eikonal} levels=${result.runtime_ms.levels} march=${result.runtime_ms.march} join/smooth=${result.runtime_ms.joinSimplifySmooth}`);
+        console.log(`  prep=${result.runtime_ms.preprocess} eikonal=${result.runtime_ms.eikonal} levels=${result.runtime_ms.levels} edgeWarp=${result.runtime_ms.edgeWarp} march=${result.runtime_ms.march} join/smooth=${result.runtime_ms.joinSimplifySmooth}`);
         console.log(`quality : paths=${quality.pathCount} pts=${quality.points} loops=${quality.closedLoops} len=${quality.totalLength} badCoords=${quality.badCoords}`);
         console.log(`determinism: checksumDelta=${checksumDelta}`);
         console.log(`snapshot: ${snapshotStatus}${snapDelta ? ' ' + JSON.stringify(snapDelta) : ''}`);

@@ -1,0 +1,14 @@
+iter	change	runtime_ms	prep_ms	eik_ms	levels_ms	warp_ms	march_ms	join_ms	paths	loops	total_len	checksum_delta	snapshot	kept
+0	baseline (harness v2: full pipeline incl preprocessCPU + edge guidance; engine untouched)	294.64	39.34	65.93	19.05	94.22	55.48	20.62	36	22	9933.21	0	created	BASELINE
+1	applyEdgeWarp: far-field fast path (d2>9*2sig2 -> copy-through) + inlined bilinear sampling	217.04	55.46	50.52	27.55	17.99	39.05	26.47	36	22	9933.21	0	within-tolerance(0)	KEEP
+2	marchSquaresField: per-cell corner min/max precompute, level-loop early-out	186.13	40.06	57.49	21.28	13.33	39.49	14.48	36	22	9933.21	0	within-tolerance(0)	KEEP
+3	eikonal: stale-pop guard (poppedV > solution[cIdx] -> skip); push f32-rounded values	189.07	46.81	50.71	32.40	12.58	22.35	24.22	36	22	9933.21	0	within-tolerance(0)	KEEP(marginal: 0.98x noise-level on synthetic; robustness parity w/ worker)
+4	boxBlurAxis: prefix-sum sliding window (O(1)/px); border normalization differs from dup-count original	285.26(under load)	68.33	96.78	34.48	17.28	44.67	23.73	36	22	9933.62	4085.06	prepare-within-tolerance(.002)	KEEP
+5	joinSegments: packed-int candidates (idx*2+end) in plain arrays; no {idx,end} objects	327.95(heavy load)	22.48	87.99	19.34	103.55	76.22	18.36	36	22	9933.62	4085.06	prepare-within-tolerance(.002)	KEEP
+6	simplifyPath: iterative keep-mask RDP, explicit stack; no slice/concat/filter churn	208.70	39.53	70.29	33.09	16.16	35.91	13.73	36	22	9933.62	4085.06	prepare-within-tolerance(.002)	KEEP
+7	eikonal: heap values Float64Array->Float32Array (exact; values are f32-rounded solution reads)	219.23	24.34	65.35	27.63	23.75	48.47	29.69	36	22	9933.62	4085.06	prepare-within-tolerance(.002)	KEEP(marginal)
+8	eikonal: unroll 4-neighbor loop into explicit left/right/up/down blocks (identical math/order)	204.83	40.36	72.88	23.69	17.56	34.61	15.74	36	22	9933.62	4085.06	prepare-within-tolerance(.002)	KEEP
+9	generateAdaptiveLevelsGrad: hoisted inverse-scale mul, |0 floor, branchless gNorm clamp (fp-rounding may shift bins; within tolerance)	133.59	18.96	37.66	15.54	11.67	37.37	12.39	37	22	9956.60	10870.6	prepare-within-tolerance(.005)	KEEP
+10	splineSmooth: padded-index accessor replaces concat alloc + allValid fast path (byte-exact after fixing off-by-one found by differential test)	214.54	47.33	42.86	12.30	16.26	76.29	19.49	37	22	9956.60	10870.6	prepare-within-tolerance(.005)	KEEP
+11	distanceTransformChamfer: fold INF-init into forward pass (identical output)	133.72	17.51	38.12	14.71	13.88	38.27	11.24	37	22	9956.60	10870.6	prepare-within-tolerance(.005)	KEEP
+12	worker.js: port f32 stale-guard fix (push solution[nIdx] not raw float64 newValue) — latent false-stale bug; syntax-checked (worker not runnable headless)	177.70	39.08	67.36	19.76	11.46	25.15	14.88	37	22	9956.60	10870.6	prepare-within-tolerance(.005)	KEEP(correctness port)

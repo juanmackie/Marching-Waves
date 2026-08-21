@@ -1,21 +1,26 @@
 {
-  "created": "2026-08-21T11:51:46.647Z",
+  "created": "2026-08-21T22:29:32.991Z",
   "quality": {
-    "pathCount": 5,
-    "points": 258,
-    "closedLoops": 1,
-    "totalLength": 1205.26,
+    "pathCount": 36,
+    "points": 2268,
+    "closedLoops": 22,
+    "totalLength": 9933.21,
     "badCoords": false,
-    "coordSum": 147903.239
+    "coordSum": 2108023.323
   },
   "params": {
     "threshold": 0.5,
-    "interval": 6,
-    "detailLevel": 0.7,
+    "interval": 3,
+    "detailLevel": 0.8,
     "featureImportance": 0.6,
     "epsilon": 0.8,
-    "smoothness": 0.5
+    "smoothness": 0.5,
+    "blurRadius": 2,
+    "contrast": 1.15,
+    "edgeGuidance": true,
+    "edgeSensitivity": 0.6,
+    "edgeMaskThreshold": 0.35
   },
-  "width": 480,
-  "height": 360
+  "width": 800,
+  "height": 600
 }
