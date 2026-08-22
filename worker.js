@@ -254,7 +254,11 @@ async function handleSolveEikonalCPU(taskId, params, options) {
             
             if (newValue < solution[nIdx]) {
                 solution[nIdx] = newValue;
-                heapPush({ x: neighbor.x, y: neighbor.y, value: newValue });
+                // Push the f32-rounded value actually stored in solution so
+                // the stale-pop guard compares apples to apples (a raw float64
+                // newValue can round DOWN on f32 storage and then look "stale"
+                // on its own first pop).
+                heapPush({ x: neighbor.x, y: neighbor.y, value: solution[nIdx] });
             }
         }
         

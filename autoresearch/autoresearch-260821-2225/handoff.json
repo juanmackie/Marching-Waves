@@ -1,0 +1,42 @@
+{
+  "skill": "autoresearch",
+  "mode": "classic",
+  "subcommand": "autoresearch",
+  "repo": "Marching-Waves",
+  "goal": "Runtime, WebGPU/CPU speed, contour quality, output similarity",
+  "finished": "2026-08-21T23:59:00Z",
+  "iterations_planned": 12,
+  "iterations_run": 12,
+  "stop_reason": "BOUNDED: 12/12 iterations completed",
+  "baseline": {
+    "note": "HEAD already contained a prior session's 7 kept optimizations (typed-array FMM heap, sobel row-cache, monotonic quantile walk, inlined MS edges, join push/reverse, smoothing fast path). This session re-baselined on a heavier workload: 800x600, denser levels (interval=3), full pipeline incl. preprocessCPU blur + edge-guidance warp (default-on in worker).",
+    "total_ms": 294.64,
+    "stages_ms": { "prep": 39.34, "eikonal": 65.93, "levels": 19.05, "edgeWarp": 94.22, "march": 55.48, "join": 20.62 }
+  },
+  "best": {
+    "total_ms_ab_median": 121.79,
+    "speedup_vs_session_baseline": "2.06x (interleaved A/B, 21 rounds)",
+    "stages_ms_ab": { "prep": 16.26, "eikonal": 38.78, "levels": 16.14, "edgeWarp": 15.31, "march": 21.42, "join": 10.05 },
+    "quality": { "paths": 37, "loops": 22, "totalLength": 9956.60, "lengthRelDelta": 0.0024, "badCoords": false, "determinism": "checksumDelta=0 across all runs" },
+    "output_similarity": "snapshot within 5% tolerance (lengthRel 0.24%, pathCountRel 2.8%, coordSumRel 0.52%); byte-identical through iter 3; small accepted fp deltas from prefix-sum blur border normalization (iter 4) and inverse-mul level binning (iter 9)"
+  },
+  "kept_changes": [
+    "applyEdgeWarp: far-field fast path (d^2 > 9*2sigma^2 -> copy-through) + inlined bilinear sampling (2.4x)",
+    "marchSquaresField: per-cell corner min/max precompute, per-level early-out, byte-identical (3.4x)",
+    "eikonal: stale-pop guard; heap values pushed as f32-rounded solution reads (fixes false-stale class)",
+    "boxBlurAxis: prefix-sum O(1)/px sliding windows (2.5x)",
+    "joinSegments: packed-int candidates (idx*2+end), no per-endpoint objects (1.5x)",
+    "simplifyPath: iterative keep-mask RDP, explicit stack, no slice/concat/filter churn",
+    "eikonal: heap values Float64Array -> Float32Array (numerically exact)",
+    "eikonal: 4-neighbor loop unrolled to explicit blocks (identical math/order)",
+    "generateAdaptiveLevelsGrad: hoisted inverse-scale mul, |0 floor, branchless gNorm clamp",
+    "splineSmooth: faithful padded-index accessor (byte-exact; off-by-one caught by 2000-case differential test)",
+    "distanceTransformChamfer: INF-init folded into forward pass (identical output)",
+    "worker.js: ported f32 stale-guard fix (latent false-stale bug in duplicated solver)"
+  ],
+  "discarded": [],
+  "verification": "benchmarks/harness.js (best-of-5 full pipeline, determinism double-run, quality proxy: closed loops / total length / NaN check, 5% snapshot tolerance) + benchmarks/ab2.js (interleaved A/B vs git HEAD with per-stage medians + output identity)",
+  "notes": "WebGPU path (js/gpu.js) requires a browser device; cannot run headless - CPU path optimized only, as planned. Machine under variable contention (~+/-8% noise floor); all keep decisions used interleaved A/B medians and required >10% stage-level wins or exactness arguments. worker.js change verified by node --check only (workers use importScripts, not runnable headless).",
+  "files_changed": ["js/engine.js", "worker.js"],
+  "files_added": ["benchmarks/harness.js (v2: full pipeline)", "benchmarks/ab2.js", "benchmarks/snapshot.json (800x600 baseline)", "autoresearch/autoresearch-260821-2225/"]
+}
