@@ -5,7 +5,6 @@ class WorkerPool {
     constructor(maxWorkers = navigator.hardwareConcurrency || 4) {
         this.maxWorkers = Math.min(maxWorkers, navigator.hardwareConcurrency || 4);
         this.workers = [];
-        this.taskQueue = [];
         this.activeTasks = new Map();
         this.taskIdCounter = 0;
         this.initialized = false;
@@ -67,9 +66,6 @@ class WorkerPool {
                             task.resolve({ data, performance });
                             this.activeTasks.delete(taskId);
 
-                            // Send cleanup message to worker to release memory
-                            worker.postMessage({ type: 'cleanup' });
-
                             // Schedule idle worker cleanup
                             this.scheduleCleanup();
                             break;
@@ -79,9 +75,6 @@ class WorkerPool {
                             console.error(`Task ${taskId} failed:`, error);
                             task.reject(new Error(error.message));
                             this.activeTasks.delete(taskId);
-
-                            // Send cleanup message to worker
-                            worker.postMessage({ type: 'cleanup' });
 
                             // Schedule idle worker cleanup
                             this.scheduleCleanup();
@@ -174,17 +167,6 @@ class WorkerPool {
         return availableWorker;
     }
 
-    async executeParallel(tasks, options = {}) {
-        const promises = tasks.map(task => 
-            this.execute(task.method, task.params, {
-                ...options,
-                onProgress: task.onProgress
-            })
-        );
-        
-        return Promise.all(promises);
-    }
-
     async cancelTask(taskId) {
         const task = this.activeTasks.get(taskId);
         if (!task) return;
@@ -235,7 +217,6 @@ class WorkerPool {
         return {
             totalWorkers: this.workers.length,
             activeWorkers: this.workers.filter(w => w.taskCount > 0).length,
-            queuedTasks: this.taskQueue.length,
             activeTasks: this.activeTasks.size
         };
     }

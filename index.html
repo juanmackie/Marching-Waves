@@ -184,11 +184,6 @@
           <span class="info-icon" data-tooltip="Reverses which pixels become origin points. When checked, light areas generate contours instead of dark areas." role="button" tabindex="0" aria-label="Information about Invert Colors">ⓘ</span>
         </div>
         <div class="checkbox-group">
-          <input type="checkbox" id="antiAlias" checked>
-          <label for="antiAlias">Anti-aliasing</label>
-          <span class="info-icon" data-tooltip="Smooths line edges for a cleaner appearance. Disable for sharper, pixel-precise lines." role="button" tabindex="0" aria-label="Information about Anti-aliasing">ⓘ</span>
-        </div>
-        <div class="checkbox-group">
           <input type="checkbox" id="varWidth">
           <label for="varWidth">Variable Line Width</label>
           <span class="info-icon" data-tooltip="Thicker lines in darker areas, thinner in lighter areas." role="button" tabindex="0" aria-label="Information about Variable Line Width">ⓘ</span>
@@ -214,15 +209,6 @@
     <section id="secPerf">
       <button class="sec-head" type="button" aria-expanded="true">Performance <span class="tw">▾</span></button>
       <div class="sec-body">
-        <div class="field">
-          <div class="field-top"><label for="maxSegments">Max Segments: <span id="maxSegValue">50000</span></label></div>
-          <input type="range" id="maxSegments" min="10000" max="200000" value="50000" step="5000">
-        </div>
-        <div class="checkbox-group">
-          <input type="checkbox" id="skipJoining">
-          <label for="skipJoining">Skip path joining (faster)</label>
-          <span class="info-icon" data-tooltip="Disables line connection optimization. Faster processing but may result in disconnected segments." role="button" tabindex="0" aria-label="Information about Skip path joining">ⓘ</span>
-        </div>
         <div class="checkbox-group">
           <input type="checkbox" id="showProgress" checked>
           <label for="showProgress">Show progress</label>
@@ -846,7 +832,7 @@
 
             async processImage(img, options) {
                 this.reset();
-                const { interval, lineWidth, invert, lineColor, antiAlias, maxSegments, skipJoining, showProgress } = options;
+                const { interval, lineWidth, invert, lineColor, showProgress } = options;
                 this.debugMode = options.debugMode || false;
                 this.vizMode = options.vizMode || 'final';
                 this.showOrigins = options.showOrigins !== false;
@@ -963,13 +949,11 @@
                 const workerParams = {
                     solution: this.solution,
                     grayData: this.grayData,
-                    imageData: this.imageData,
                     gradMag: this.gradMag,
                     edgeDistance: this.edgeDistance,
                     width,
                     height,
                     interval,
-                    maxSegments,
                     threshold: options.threshold / 100,
                     subjectFocus: options.subjectFocus,
                     wireDensity: options.wireDensity,
@@ -987,7 +971,7 @@
                 if (options.mode === 'luminance') {
                     this.updateProgress(showProgress, 60, 'Extracting luminance contours...');
                     const levels = Engine.generateLuminanceLevels(this.grayData, width, height, interval, threshold, this.gradMag);
-                    const raw = Engine.marchSquaresDirect(this.grayData, width, height, levels);
+                    const raw = Engine.marchSquaresField(this.grayData, width, height, levels);
                     let joined = Engine.joinSegments(raw);
                     joined = joined.map(p => Engine.simplifyPath(p, 0.8)).filter(p => p.length > 1);
                     if (options.contourSmoothness > 0.1) {
@@ -1038,7 +1022,6 @@
                 } else {
                     // Extract new adaptive contour parameters from options
                     const contourOptions = {
-                        adaptiveContours: options.adaptiveContours !== false,
                         edgeGuidance: options.edgeGuidance !== false,
                         edgeSensitivity: options.edgeSensitivity ?? 0.7,
                         detailLevel: options.detailLevel ?? 0.8,
@@ -1060,7 +1043,7 @@
                     if (workerResult) {
                         contourData = workerResult.data;
                     } else {
-                        contourData = await this.extractContours(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, contourOptions);
+                        contourData = await this.extractContours(width, height, interval, showProgress, lineColor, lineWidth, contourOptions);
                     }
                 }
 
@@ -1129,7 +1112,7 @@
                 await this.yieldToBrowser();
                 this.updateProgress(showProgress, 100, 'Complete!');
 
-                const svg = this.getSVG(width, height, lineColor, lineWidth, antiAlias);
+                const svg = this.getSVG(width, height, lineColor, lineWidth);
 
                 return svg;
             }
@@ -1366,9 +1349,9 @@
                 }
             }
 
-            async extractContours(width, height, interval, maxSegments, skipJoining, showProgress, lineColor = '#000000', lineWidth = 1, options = {}) {
+            async extractContours(width, height, interval, showProgress, lineColor = '#000000', lineWidth = 1, options = {}) {
                 // Use the new adaptive contour extraction algorithm
-                return this.extractContoursAdaptive(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, options);
+                return this.extractContoursAdaptive(width, height, interval, showProgress, lineColor, lineWidth, options);
             }
 
             async extractSubjectWire(width, height, options) {
@@ -1390,11 +1373,9 @@
             async extractStreamlines(width, height, options) {
                 const {
                     interval = 8,
-                    maxSegments = 50000,
                     lineColor = '#000000',
                     lineWidth = 1,
-                    showProgress = true,
-                    edgeSensitivity = 0.5
+                    showProgress = true
                 } = options;
 
                 const tStart = performance.now();
@@ -2090,7 +2071,7 @@
 
                 const width = this.canvas.width;
                 const height = this.canvas.height;
-                const { interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth } = options;
+                const { interval, showProgress, lineColor, lineWidth } = options;
 
                 // Extract contours with bounds
                 // Note: We use the options passed in, which might be different from original run (that's the point!)
@@ -2098,7 +2079,7 @@
                 this.updateProgress(showProgress, 10, 'Extracting region contours...');
                 
                 const contourData = await this.extractContoursAdaptive(
-                    width, height, interval, maxSegments, skipJoining, showProgress, 
+                    width, height, interval, showProgress,
                     lineColor, lineWidth, options, rect
                 );
                 
@@ -2122,8 +2103,7 @@
                 this.updateProgress(showProgress, 100, 'Region updated!');
                 
                 // Return new SVG
-                const antiAlias = document.getElementById('antiAlias').checked; // Grab from UI
-                return this.getSVG(width, height, lineColor, lineWidth, antiAlias);
+                return this.getSVG(width, height, lineColor, lineWidth);
             }
 
             applyGlitch(contours) {
@@ -2324,7 +2304,7 @@
 
                 return '<svg></svg>';
             }
-            getSVG(width, height, lineColor, lineWidth, antiAlias) {
+            getSVG(width, height, lineColor, lineWidth) {
                 const palette = (this.usePalette && this.palette && this.palette.length > 0) ? this.palette : null;
                 const strokeWidth = this.lineWidthVar || lineWidth;
                 let renderContours = this.contours;
@@ -2461,7 +2441,7 @@
             // PHASE 1: ADAPTIVE CONTOUR EXTRACTION
             // ============================================
 
-            async extractContoursAdaptive(width, height, interval, maxSegments, skipJoining, showProgress, lineColor, lineWidth, options, bounds = null) {
+            async extractContoursAdaptive(width, height, interval, showProgress, lineColor, lineWidth, options, bounds = null) {
                 const {
                     edgeGuidance = true,
                     edgeSensitivity = 0.7,
@@ -2995,12 +2975,9 @@
                 threshold: parseFloat(document.getElementById('threshold').value),
                 invert: document.getElementById('invert').checked,
                 lineColor: document.getElementById('lineColor').value,
-                antiAlias: document.getElementById('antiAlias').checked,
                 variableWidth: document.getElementById('varWidth').checked,
                 glitchEffect: document.getElementById('glitchEffect').checked,
                 fractalEffect: document.getElementById('fractalEffect').checked,
-                maxSegments: parseInt(document.getElementById('maxSegments').value),
-                skipJoining: document.getElementById('skipJoining').checked,
                 showProgress: document.getElementById('showProgress').checked,
                 // ... adaptive params ...
                 edgeGuidance: document.getElementById('edgeGuidance').checked,
@@ -3215,12 +3192,6 @@
             document.getElementById('lineColor').value = preset.lineColor;
 
             document.getElementById('invert').checked = preset.invert;
-            if (preset.antiAlias !== undefined) document.getElementById('antiAlias').checked = preset.antiAlias;
-            if (preset.maxSegments !== undefined) {
-                document.getElementById('maxSegments').value = preset.maxSegments;
-                document.getElementById('maxSegValue').textContent = preset.maxSegments;
-            }
-
             // Apply new adaptive contour parameters if they exist
             if (preset.edgeGuidance !== undefined) {
                 document.getElementById('edgeGuidance').checked = preset.edgeGuidance;
@@ -3279,7 +3250,6 @@
 
         document.getElementById('modeSelect').addEventListener('change', (e) => {
             const mode = e.target.value;
-            const hasAdvanced = mode === 'contours' || mode === 'streamlines';
             const hasSubjectWire = mode === 'subject-wire';
             
             const intervalLabel = document.querySelector('#secParams .field-top:first-of-type label');
@@ -3296,10 +3266,6 @@
                 selectionManager.disable();
                 rerunBtn.style.display = 'none';
             }
-            const maxField = document.getElementById('maxSegments').closest('.field');
-            const skipGroup = document.getElementById('skipJoining').closest('.checkbox-group');
-            if (maxField) maxField.style.display = hasAdvanced ? 'block' : 'none';
-            if (skipGroup) skipGroup.style.display = hasAdvanced ? 'flex' : 'none';
         });
 
         const generateSamplePattern = () => {
@@ -3481,12 +3447,9 @@
                 threshold: parseFloat(document.getElementById('threshold').value),
                 invert: document.getElementById('invert').checked,
                 lineColor: document.getElementById('lineColor').value,
-                antiAlias: document.getElementById('antiAlias').checked,
                 variableWidth: document.getElementById('varWidth').checked,
                 glitchEffect: document.getElementById('glitchEffect').checked,
                 fractalEffect: document.getElementById('fractalEffect').checked,
-                maxSegments: parseInt(document.getElementById('maxSegments').value),
-                skipJoining: document.getElementById('skipJoining').checked,
                 showProgress: document.getElementById('showProgress').checked,
                 debugMode: debugMode.checked,
                 vizMode: document.getElementById('vizMode').value,
@@ -3603,10 +3566,6 @@
 
         document.getElementById('threshold').addEventListener('input', (e) => {
             document.getElementById('thresholdValue').textContent = e.target.value;
-        });
-
-        document.getElementById('maxSegments').addEventListener('input', (e) => {
-            document.getElementById('maxSegValue').textContent = e.target.value;
         });
 
         document.getElementById('inkBleed').addEventListener('input', (e) => {

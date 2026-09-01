@@ -47,7 +47,7 @@ Marching Waves is a computational art generator. It creates contour artwork from
 - **Subject Wire controls**: tune subject focus, wire density, pressure/tension, relationship lines, abstraction, and hand-drawn variation. This mode is heuristic rather than semantic object or pose recognition.
 - **Preset library**: pre-configured styles. Examples: Natural Contours, Topographic Map, Blueprint, Flowing Silk, Marble Flow, Ink Stipple, Tangled String, Fluid, Cyberpunk, Ink Blot, Ethereal, Sketch, and Subject Wire.
 - **Fine-grained controls**: you can adjust the level step, line width, threshold, smoothness, and more.
-- **Color customization**: you control the line color and anti-aliasing.
+- **Color customization**: you control the line color and rendering style.
 - **Edge guidance**: contours can snap to detected image edges. This gives better line art.
 - **Ink Bleed**: a soft, two-layer bloom around the ink lines — a broad faint wash plus a tighter darker edge — simulating ink bleeding into the surface. It renders in real time on the canvas and is preserved in the exported SVG as a normal vector `<filter>`, so the file stays portable.
 
@@ -201,8 +201,6 @@ Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 2
 
 ### Performance settings
 
-- **Max Segments**: the limit for performance (higher = more detail, slower).
-- **Skip Path Joining**: faster processing. The segments may not connect.
 - **Live Preview**: real-time updates during extraction. Switch it off for speed.
 
 ## Common problems
@@ -252,7 +250,6 @@ Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 2
 1. Make sure the workers are active (the status shows "ACTIVE").
 2. Reduce the image size before processing.
 3. Switch off "Live Preview" in the performance settings.
-4. Reduce the "Max Segments" parameter.
 
 ## The main parts of the application
 

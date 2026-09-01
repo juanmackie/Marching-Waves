@@ -35,7 +35,6 @@ self.onmessage = function(e) {
     if (type === 'cancel') { isCancelled = true; return; }
     if (type === 'pause') { isPaused = true; return; }
     if (type === 'resume') { isPaused = false; if (pauseResolve) { pauseResolve(); pauseResolve = null; } return; }
-    if (type === 'cleanup') { cleanupWorkerMemory(); return; }
     if (type === 'visibility') { isVisible = e.data.isVisible; return; }
 
     // Regular task execution
@@ -299,7 +298,7 @@ async function handleSolveEikonalCPU(taskId, params, options) {
 // ============================================
 async function handleExtractContoursAdaptive(taskId, params, options) {
     const {
-        solution, imageData, width, height, interval, maxSegments,
+        solution, width, height, interval,
         gradMag, edgeDistance,
         edgeGuidance = true, edgeSensitivity = 0.6,
         detailLevel = 0.7, contourSmoothness = 0.5, featureImportance = 0.6
@@ -395,7 +394,7 @@ async function handleExtractSubjectWire(taskId, params, options) {
 // ============================================
 async function handleExtractStreamlines(taskId, params, options) {
     const { solution, grayData, width, height } = params;
-    const { interval = 8, maxSegments = 50000, edgeSensitivity = 0.5, showProgress } = options;
+    const { interval = 8, showProgress } = options;
     // Threshold arrives normalized (0..1) in params; options.threshold is the raw UI value
     const threshold = params.threshold != null ? params.threshold : 0.5;
     
@@ -959,8 +958,6 @@ function computeDistanceFieldGradient(solution, width, height) {
     return { gradX, gradY, gradMag };
 }
 
-const PHI = 1.618033988749895;
-
 function hashNoise(x, y) {
     let h = (Math.floor(x) * 374761393 + Math.floor(y) * 668265263) | 0;
     h = ((h ^ (h >>> 13)) * 1274126177) | 0;
@@ -977,42 +974,4 @@ function smoothNoise(x, y) {
     const v01 = hashNoise(ix, iy + 1);
     const v11 = hashNoise(ix + 1, iy + 1);
     return v00 + (v10 - v00) * sx + (v01 - v00) * sy + (v11 - v01 - v10 + v00) * sx * sy;
-}
-
-function generateAdaptiveLevels(solution, width, height, interval, min, max, gradMag, detailLevel) {
-    const levels = [];
-    
-    if (min === Infinity || max === -Infinity) return levels;
-    
-    const range = max - min;
-    if (range < 0.001) return [min + range / 2];
-    
-    const avgGrad = detailLevel ?? 0.5;
-    let current = min + interval;
-    
-    while (current < max) {
-        levels.push(current);
-        const mod = 1 + 0.3 * Math.sin(current * PHI);
-        const gradMod = 0.8 + 0.4 * (1 - Math.min(1, avgGrad));
-        current += interval * mod * gradMod;
-    }
-    
-    return levels;
-}
-
-// Cleanup function to free memory after task completion
-function cleanupWorkerMemory() {
-    // Clear cancellation state
-    isCancelled = false;
-    isPaused = false;
-
-    // Clear pause promise
-    if (pauseResolve) {
-        pauseResolve = null;
-    }
-
-    // Clear yield promise
-    if (yieldResolve) {
-        yieldResolve = null;
-    }
 }

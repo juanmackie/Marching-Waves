@@ -292,16 +292,6 @@ var Engine = (function () {
         return len;
     }
 
-    function toGrayscale(imageData) {
-        var data = imageData.data;
-        var gray = new Float32Array(imageData.width * imageData.height);
-        for (var i = 0; i < gray.length; i++) {
-            var off = i * 4;
-            gray[i] = (0.299 * data[off] + 0.587 * data[off + 1] + 0.114 * data[off + 2]) / 255;
-        }
-        return gray;
-    }
-
     // ─── Eikonal FMM solver ───
     function solveEikonalFMM(grayData, width, height, threshold) {
         var size = width * height;
@@ -500,10 +490,6 @@ var Engine = (function () {
     }
 
     // ─── Direct Luminance Contours (no Eikonal) ───
-    function marchSquaresDirect(grayData, width, height, levels) {
-        return marchSquaresField(grayData, width, height, levels);
-    }
-
     function generateLuminanceLevels(grayData, width, height, interval, threshold, gradMag) {
         // Levels are placed so contour lines are roughly evenly spaced in SPACE:
         // per value-bin weight = 1 / mean(|gradient|) of that bin. This keeps lines
@@ -875,7 +861,6 @@ var Engine = (function () {
     // ─── Public API ───
     return {
         marchSquaresField: marchSquaresField,
-        marchSquaresDirect: marchSquaresDirect,
         generateLuminanceLevels: generateLuminanceLevels,
         generateAdaptiveLevelsGrad: generateAdaptiveLevelsGrad,
         applyEdgeWarp: applyEdgeWarp,
@@ -886,7 +871,6 @@ var Engine = (function () {
         joinSegments: joinSegments,
         simplifyPath: simplifyPath,
         splineSmooth: splineSmooth,
-        toGrayscale: toGrayscale,
         solveEikonalFMM: solveEikonalFMM,
         pointDistance: pointDistance,
         getPathLength: getPathLength
