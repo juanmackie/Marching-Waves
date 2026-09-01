@@ -6,9 +6,12 @@
 settings.local.json
 
 # Pi/subagent state and generated instructions
+.pi/
 .pi-subagents/
-.pi-subagents
-production-ready-vibe-coding-rules*.md
+PLAN.md
+plan.md
+*vibe-coding-rules*.md
+*Vibe Coding Rules*.md
 
 # Dependencies and build artifacts
 node_modules/
