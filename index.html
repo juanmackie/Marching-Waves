@@ -81,6 +81,7 @@
             <option value="ethereal">Ethereal</option>
             <option value="sketch">Sketch (Hatch)</option>
             <option value="subject-wire">Subject Wire</option>
+            <option value="fashion-sketch">Fashion Sketch · Editorial Ink</option>
           </select>
         </div>
         <div class="field">
@@ -846,6 +847,7 @@
                 this.fractalEnabled = options.fractalEffect || false;
                 this.currentMode = options.mode || 'luminance';
                 this.inkBleed = Math.max(0, Math.min(1, parseFloat(options.inkBleed) || 0));
+                this.whiteBackground = options.whiteBackground === true;
 
                 // Initialize worker pool for background processing
                 await this.initWorkerPool();
@@ -2352,6 +2354,9 @@
                 }
 
                 let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n`;
+                if (this.whiteBackground) {
+                    svg += `  <rect width="${width}" height="${height}" fill="#ffffff"/>\n`;
+                }
                 const bleedEnabled = this.inkBleed > 0;
                 if (bleedEnabled) {
                     // Two-layer soft bleed mirrors the canvas post-effect: a broad faint
@@ -2994,7 +2999,8 @@
                 // Pass optimization params too
                 simplification: presets[document.getElementById('presetSelect').value]?.simplification,
                 splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
-                optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath
+                optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath,
+                whiteBackground: document.getElementById('modeSelect').value === 'subject-wire' && presets[document.getElementById('presetSelect').value]?.whiteBackground
             };
 
             marchingWaves.setProgressCallback(updateProgressUI);
@@ -3041,6 +3047,28 @@
                 relationshipStrength: 0.58,
                 abstraction: 0.82,
                 handDrawn: 0.28,
+                inkBleed: 0
+            },
+            'fashion-sketch': {
+                mode: 'subject-wire',
+                interval: 8,
+                lineWidth: 0.8,
+                threshold: 50,
+                lineColor: '#000000',
+                invert: false,
+                variableWidth: false,
+                glitchEffect: false,
+                fractalEffect: false,
+                whiteBackground: true,
+                blurRadius: 1,
+                contrast: 1.15,
+                contourSmoothness: 0.75,
+                subjectFocus: 0.8,
+                wireDensity: 0.3,
+                wireTension: 0.65,
+                relationshipStrength: 0.2,
+                abstraction: 0.75,
+                handDrawn: 0.7,
                 inkBleed: 0
             },
             'natural-contours': {
@@ -3192,6 +3220,9 @@
             document.getElementById('lineColor').value = preset.lineColor;
 
             document.getElementById('invert').checked = preset.invert;
+            if (preset.variableWidth !== undefined) document.getElementById('varWidth').checked = preset.variableWidth;
+            if (preset.glitchEffect !== undefined) document.getElementById('glitchEffect').checked = preset.glitchEffect;
+            if (preset.fractalEffect !== undefined) document.getElementById('fractalEffect').checked = preset.fractalEffect;
             // Apply new adaptive contour parameters if they exist
             if (preset.edgeGuidance !== undefined) {
                 document.getElementById('edgeGuidance').checked = preset.edgeGuidance;
@@ -3475,7 +3506,8 @@
                 simplification: presets[document.getElementById('presetSelect').value]?.simplification,
                 splineResolution: presets[document.getElementById('presetSelect').value]?.splineResolution,
                 optimizePath: presets[document.getElementById('presetSelect').value]?.optimizePath,
-                inkBleed: parseFloat(document.getElementById('inkBleed').value)
+                inkBleed: parseFloat(document.getElementById('inkBleed').value),
+                whiteBackground: document.getElementById('modeSelect').value === 'subject-wire' && presets[document.getElementById('presetSelect').value]?.whiteBackground
             };
 
             marchingWaves.setProgressCallback(updateProgressUI);

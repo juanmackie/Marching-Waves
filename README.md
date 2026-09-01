@@ -19,6 +19,7 @@ Marching Waves is a computational art generator. It creates contour artwork from
 - **TSP Art**: continuous line art from the Traveling Salesman Problem.
 - **Cross Hatch**: layered hatch patterns that represent tones.
 - **Subject Wire**: a local saliency-and-flow heuristic that distills a focal subject into sparse, open, hand-drawn wire paths without copying the background.
+- **Fashion Sketch**: a preset for monochrome editorial ink sketches with sparse, expressive strokes on a white background. It uses Subject Wire rather than semantic fashion or pose recognition.
 
 ### Performance and technology
 
@@ -45,7 +46,7 @@ Marching Waves is a computational art generator. It creates contour artwork from
 
 - **Many modes**: Luminance Contours, Eikonal Contours, Streamlines, Stipple, TSP Art, Cross Hatch, and Subject Wire.
 - **Subject Wire controls**: tune subject focus, wire density, pressure/tension, relationship lines, abstraction, and hand-drawn variation. This mode is heuristic rather than semantic object or pose recognition.
-- **Preset library**: pre-configured styles. Examples: Natural Contours, Topographic Map, Blueprint, Flowing Silk, Marble Flow, Ink Stipple, Tangled String, Fluid, Cyberpunk, Ink Blot, Ethereal, Sketch, and Subject Wire.
+- **Preset library**: pre-configured styles. Examples: Natural Contours, Topographic Map, Blueprint, Flowing Silk, Marble Flow, Ink Stipple, Tangled String, Fluid, Cyberpunk, Ink Blot, Ethereal, Sketch, Subject Wire, and Fashion Sketch.
 - **Fine-grained controls**: you can adjust the level step, line width, threshold, smoothness, and more.
 - **Color customization**: you control the line color and rendering style.
 - **Edge guidance**: contours can snap to detected image edges. This gives better line art.
