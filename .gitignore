@@ -8,6 +8,7 @@ settings.local.json
 # Pi/subagent state and generated instructions
 .pi/
 .pi-subagents/
+autoresearch/
 PLAN.md
 plan.md
 *vibe-coding-rules*.md
