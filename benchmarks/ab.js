@@ -1,17 +1,17 @@
-// A/B benchmark: loads baseline engine (git HEAD copy) and candidate engine,
+// A/B benchmark: loads a baseline Engine file and a candidate Engine file,
 // alternates timed runs in one process to cancel machine-contention bias.
-// Usage: node benchmarks/ab.js [baselinePath] [candidatePath] [rounds]
+// Usage: node benchmarks/ab.js [baselineEngine.js] [candidateEngine.js] [rounds] [mode]
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { performance } = require('perf_hooks');
 
 function loadEngine(file) {
+    if (!fs.existsSync(file)) throw new Error(`engine file not found: ${file}`);
     const src = fs.readFileSync(file, 'utf8');
-    const sandbox = {};
-    const fn = new Function('globalThis', src + '\nreturn globalThis.Engine;');
-    // isolate per-variant Engine via fresh Function scope on a temp global
     const g = {};
-    const Engine = new Function('window', 'globalThis', src + '\n;return Engine;')({}, g);
+    const Engine = new Function('window', 'globalThis', 'self', src + '\n;return globalThis.Engine || Engine;')({}, g, g);
+    if (!Engine || typeof Engine.generate !== 'function') throw new Error(`no Engine.generate in ${file}`);
     return Engine;
 }
 
@@ -36,48 +36,50 @@ function generateSyntheticField(width, height) {
     return gray;
 }
 
+function geomStats(geom) {
+    let sum = 0;
+    const o = geom.offsets || [];
+    const p = geom.points || new Float32Array(0);
+    const n = o.length ? o[o.length - 1] : Math.floor(p.length / 2);
+    for (let i = 0; i < n * 2; i++) sum += p[i] || 0;
+    return { paths: geom.pathCount || 0, points: n, sum };
+}
+
 const ROOT = path.join(__dirname, '..');
-const baseFile = process.argv[2] || '/tmp/engine_baseline.js';
+const baseFile = process.argv[2] || path.join(ROOT, 'benchmarks', 'engine_baseline.js');
 const candFile = process.argv[3] || path.join(ROOT, 'js', 'engine.js');
 const ROUNDS = parseInt(process.argv[4] || '9', 10);
+const mode = process.argv[5] || 'contours';
 
 const E0 = loadEngine(baseFile);
 const E1 = loadEngine(candFile);
 const W = 480, H = 360;
 const gray = generateSyntheticField(W, H);
-const PARAMS = { threshold: 0.5, interval: 6, detailLevel: 0.7, featureImportance: 0.6, epsilon: 0.8, smoothness: 0.5 };
+const PARAMS = {
+    threshold: 0.5, interval: 6, detailLevel: 0.7, featureImportance: 0.6,
+    epsilon: 0.8, smoothness: 0.5, edgeGuidance: true, edgeSensitivity: 0.6,
+    edgeMaskThreshold: 0.35, flowSpacing: 10, stepSize: 1.5, maxSteps: 400,
+    minPathLength: 8, flowLineWidth: 1.0, stippleDensity: 4, stippleRadius: 1.8,
+    seed: 1, hatchSpacing: 6, hatchAngle: 45, hatchCross: true,
+    edgeSubjectIsolation: false
+};
 
-function eikonalOnly(E) {
+function runOnce(E) {
     const t0 = performance.now();
-    E.solveEikonalFMM(gray, W, H, PARAMS.threshold);
-    return performance.now() - t0;
+    const geom = E.generate(mode, { data: gray }, W, H, PARAMS);
+    return { ms: performance.now() - t0, geom };
 }
 
-// warmup both
-for (let i = 0; i < 2; i++) { eikonalOnly(E0); eikonalOnly(E1); }
+// warmup
+for (let i = 0; i < 2; i++) { runOnce(E0); runOnce(E1); }
 
 const t0s = [], t1s = [];
-let checksumEqual = null;
+let g0, g1;
 for (let r = 0; r < ROUNDS; r++) {
-    t0s.push(eikonalOnly(E0));
-    t1s.push(eikonalOnly(E1));
+    const a = runOnce(E0); t0s.push(a.ms); g0 = a.geom;
+    const b = runOnce(E1); t1s.push(b.ms); g1 = b.geom;
 }
-// full-pipeline equivalence check
-function fullPipeline(E) {
-    const sol = E.solveEikonalFMM(gray, W, H, PARAMS.threshold);
-    let min = Infinity, max = -Infinity;
-    for (let i = 0; i < sol.length; i++) { if (sol[i] < min) min = sol[i]; if (sol[i] > max) max = sol[i]; }
-    const grad = E.sobelGradientCPU(gray, W, H);
-    const levels = E.generateAdaptiveLevelsGrad(sol, W, H, PARAMS.interval, min, max, grad.gradMag, PARAMS.detailLevel, PARAMS.featureImportance);
-    const raw = E.marchSquaresField(sol, W, H, levels);
-    let joined = E.joinSegments(raw);
-    joined = joined.map(p => E.simplifyPath(p, PARAMS.epsilon)).filter(p => p.length > 1);
-    const segments = 1 + Math.round(4 * PARAMS.smoothness);
-    const tension = 0.3 + 0.4 * PARAMS.smoothness;
-    return joined.map(p => E.smoothPathCornerAware(p, segments, tension, 30));
-}
-const p0 = fullPipeline(E0), p1 = fullPipeline(E1);
-const sum = ps => { let s = 0; for (const p of ps) for (const pt of p) s += pt.x + pt.y; return s; };
-const identical = JSON.stringify(p0) === JSON.stringify(p1);
 const med = a => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
-console.log(`eikonal A/B (${ROUNDS} rounds, median): baseline=${med(t0s).toFixed(2)}ms candidate=${med(t1s).toFixed(2)}ms  speedup=${(med(t0s) / med(t1s)).toFixed(2)}x  outputIdentical=${identical}  coordSumDelta=${Math.abs(sum(p1) - sum(p0)).toFixed(6)}`);
+const s0 = geomStats(g0), s1 = geomStats(g1);
+console.log(`${mode} A/B (${ROUNDS} rounds, median): baseline=${med(t0s).toFixed(2)}ms candidate=${med(t1s).toFixed(2)}ms speedup=${(med(t0s) / med(t1s)).toFixed(2)}x`);
+console.log(`output: paths=${s0.paths}->${s1.paths} points=${s0.points}->${s1.points} coordSumDelta=${Math.abs(s1.sum - s0.sum).toFixed(6)}`);

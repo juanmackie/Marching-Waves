@@ -63,12 +63,12 @@ Marching Waves is a computational art generator. It creates contour artwork from
 ## How it works
 
 1. **Image input**: load an image (JPEG, PNG, etc.) or use the sample pattern generator.
-2. **Preprocessing**: the application converts the image to grayscale. It applies inversion if necessary.
-3. **Field computation**: it uses the image luminance directly (default). Or it solves the Eikonal equation to create a distance field.
-4. **Extraction**: it uses Marching Squares for contour modes, or a local saliency/force-field pass for Subject Wire.
-5. **Adaptive enhancement**: it applies edge guidance, smoothness, detail, and subject-wire abstraction controls.
-6. **Path optimization**: it joins, simplifies, and smooths the paths for clean output.
-7. **Rendering**: it draws the final artwork on the canvas and provides SVG export.
+2. **Preprocessing**: the application converts the image to grayscale and applies blur/contrast/glitch/fractal/dither controls.
+3. **Field computation**: it uses the image luminance directly (default). Or it solves the Eikonal equation with the exact CPU Fast Marching Method to create a distance field.
+4. **Extraction**: it uses Marching Squares for contour modes, streamlines, stipple, TSP, cross-hatch, or a local saliency/flow pass for Subject Wire.
+5. **Adaptive enhancement**: it applies edge guidance, smoothness, detail, seeded variation, and subject-wire abstraction controls.
+6. **Path optimization**: it joins, simplifies, and corner-aware-smooths the paths for clean output.
+7. **Rendering**: one geometry stream drives canvas rendering, SVG export, and SVG-driven effects (e.g. Ink Bleed).
 
 ## Quick start
 
@@ -169,14 +169,12 @@ When the application runs correctly, you see:
 
 ### GPU acceleration notes
 
-Marching Waves uses WebGPU for:
+Marching Waves uses WebGPU where it helps most:
 
-1. **Preprocessing** — grayscale conversion, separable Gaussian blur (denoise), contrast stretch.
-2. **Gradients** — Sobel magnitude for adaptive levels, edge guidance, and variable line width.
-3. **Eikonal solver** — a red-black Jacobi sweep solver computes the true Eikonal distance field (speed = luminance). It converges to the same viscosity solution as the CPU Fast Marching Method.
-4. **Edge distance field** — unsigned distance to image edges for edge guidance.
+1. **Preprocessing / gradients / edge distance** â€” grayscale conversion, Gaussian blur (denoise), contrast stretch, Sobel gradients, and edge-distance-field sampling.
+2. **Eikonal solver** â€” a red-black Jacobi sweep computes an approximate Eikonal distance field (speed = luminance) for live preview and sample generation.
 
-Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 26+) over HTTPS or localhost. If WebGPU is not available, every stage falls back to CPU automatically. The application produces the same artwork, but it is slower. To disable GPU acceleration manually, switch it off in the "Performance" options.
+Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 26+) over HTTPS or localhost. If WebGPU is not available, every stage falls back to CPU automatically. Worker contours use the exact CPU Fast Marching Method for deterministic, fully converged output; the application produces the same artwork, but it is slower. To disable GPU acceleration manually, switch it off in the "Performance" options.
 
 ### Parameter guide
 
@@ -254,12 +252,15 @@ Requirements: a WebGPU-capable browser (Chrome/Edge 113+, Firefox 141+, Safari 2
 
 ## The main parts of the application
 
-The application is a single-page application. It uses pure JavaScript with no external dependencies.
+The application is a single-page application. It uses pure JavaScript with no external dependencies. The codebase is organized around a single flat geometry stream (Structure-of-Arrays: path offsets/points/widths/colors) so kernels, workers, canvas rendering, and SVG export share one data contract.
 
-- **Core engine**: the `MarchingWaves` class does all image processing.
-- **Live preview**: `LivePreviewManager` handles the real-time visualization.
-- **UI components**: the UI components use vanilla HTML/CSS/JavaScript.
-- **Algorithms**: the application implements the algorithms from scratch. Examples: FMM, Marching Squares, and Poisson sampling.
+- **`js/engine.js`**: flat-ABI kernels — preprocessing, CPU FMM/Eikonal, gradients, levels, marching squares, streamlines, stipple, TSP, hatch, path optimization, and `generate()` for all non-subject modes.
+- **`js/geometry.js`**: the only geometry renderer. `drawGeometry()` and `geometryToSVG()` consume the same buffers; `buildBleedFilter()` is the single Ink Bleed definition.
+- **`js/worker.js`**: a shared Web Worker RPC (`generate`, `debug`, region rerun, pause/resume/cancel) around the engine.
+- **`js/worker-client.js`**: one persistent worker client with optional GPU-assisted preprocessing.
+- **`js/app.js`**: declarative control/preset registry, event wiring, live preview, and orchestration.
+- **`js/subject-wire.js`**: the Subject Wire heuristic, producing the same flat geometry contract.
+- **`js/gpu.js` / `js/paper-bleed.js`**: optional WebGPU acceleration and paper texture sampling.
 
 ## Browser support
 

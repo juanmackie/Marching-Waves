@@ -119,11 +119,12 @@ class WebGPUManager {
     }
 
     getPipeline(name, code, entryPoint) {
-        let p = this._pipelines.get(name);
+        const key = name + '|' + entryPoint + '|' + code;
+        let p = this._pipelines.get(key);
         if (!p) {
             const module = this.device.createShaderModule({ code });
             p = this.device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint } });
-            this._pipelines.set(name, p);
+            this._pipelines.set(key, p);
         }
         return p;
     }
